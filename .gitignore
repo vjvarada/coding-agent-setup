@@ -1,0 +1,11 @@
+# Nothing here should be committed by consumers, but if this kit is used in-place:
+.codegraph/
+*.log
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Skill runtime cruft (must never be published)
+.impeccable/
+.claude/

@@ -1,0 +1,18 @@
+{
+  "description": "RTK (Rust Token Killer) PreToolUse hook compresses noisy shell output (pytest/ruff/git/docker/...) before it reaches the agent context. Scoped by an allowlist in .claude/hooks/rtk-bash.sh; skips `uv run` and file reads. Requires `rtk` on PATH; no-ops silently if absent.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/rtk-bash.sh\"",
+            "timeout": 10,
+            "statusMessage": "rtk: compressing output"
+          }
+        ]
+      }
+    ]
+  }
+}
