@@ -35,6 +35,7 @@ config, never overwrite, and no-op anything already installed.
 |---|---|
 | [`SETUP.md`](SETUP.md) | **Agent-facing** step-by-step auto-install playbook |
 | [`PLAYBOOK.md`](PLAYBOOK.md) | The **methodology** — why these tools, the principles behind them, hard-won lessons |
+| [`HARNESS-PRACTICES.md`](HARNESS-PRACTICES.md) | Harder harness practices (tool risk annotations, fail-closed permissions, trajectory evals, prompt-cache discipline, CI gates) for keeping a codebase agent-developable over time |
 | [`install.sh`](install.sh) / [`install.ps1`](install.ps1) | Runnable installers (Unix / Windows) |
 | [`templates/`](templates/) | Ready-to-copy config for Claude Code + VS Code Copilot |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How we push new learnings back into this kit |

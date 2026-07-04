@@ -186,3 +186,15 @@ system. Always `wc`/token-count the suspected sink first; act on the number.
 5. **Verify** — drive the real flow, observe behavior, not just the test result.
 6. **Record** — if you learned something that makes the next change faster, push
    it back to this kit (see `CONTRIBUTING.md`).
+
+---
+
+## Going further
+
+These six principles are the core. For the harder practices that keep a codebase
+safe and cheap for agents *over time* — tool risk annotations, fail-closed
+permissions, golden trajectory evals, prompt-cache discipline, auto-compaction
+thresholds, tool naming, and complexity/correctness CI gates — see
+[`HARNESS-PRACTICES.md`](HARNESS-PRACTICES.md). Those are drawn from the
+[awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering)
+body of work and are practices to build against your own stack, not installers.
