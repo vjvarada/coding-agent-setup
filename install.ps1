@@ -4,18 +4,20 @@
 #   1. CodeGraph  — symbol/call-graph MCP server
 #   2. RTK        — shell-output compressor
 #   3. Config     — MCP registration + RTK hook/nudge + project instructions
+#   4. DOX        — seed a root AGENTS.md architecture contract (place-before-building)
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites.
 # Run from the target repo root, or pass -Repo <path>.
 #   pwsh coding-agent-setup/install.ps1 [-Repo C:\path\to\repo]
 #
-# Toggles: -SkipCodegraph  -SkipRtk  -SkipConfig
+# Toggles: -SkipCodegraph  -SkipRtk  -SkipConfig  -SkipDox
 
 param(
   [string]$Repo = (Get-Location).Path,
   [switch]$SkipCodegraph,
   [switch]$SkipRtk,
-  [switch]$SkipConfig
+  [switch]$SkipConfig,
+  [switch]$SkipDox
 )
 
 $ErrorActionPreference = "Continue"
@@ -119,6 +121,19 @@ else {
       Ok "appended RTK block to $cpi"
     }
   }
+}
+
+# ===================================================== 4. DOX ===============
+# Seed a root AGENTS.md "DOX" architecture contract if the repo has none.
+# Non-destructive: never touches an existing AGENTS.md.
+if ($SkipDox) { Skip "DOX architecture contract (-SkipDox)" }
+elseif (Test-Path "AGENTS.md") { Skip "AGENTS.md exists (DOX contract already present — leaving it untouched)" }
+else {
+  $dox = Join-Path $Templates "shared\AGENTS.md"
+  if (Test-Path $dox) {
+    Copy-Item $dox "AGENTS.md"
+    Ok "wrote AGENTS.md (DOX root — fill in the <...> placeholders for this repo)"
+  } else { Warn "DOX template missing from kit ($dox)" }
 }
 
 # ===================================================== Verify ================

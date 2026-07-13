@@ -13,8 +13,10 @@ make large, unfamiliar codebases cheap and fast to work on:
   docker) by 60–90% before it reaches the model's context.
 - **Review + verify discipline** — adversarial review and end-to-end
   verification that catch the plausible-but-wrong changes shallow checks miss.
-- **Project instructions** — encode the repo's conventions once so the agent
-  stops rediscovering them every session.
+- **Project instructions + DOX contract** — encode the repo's conventions once,
+  then a hierarchy of per-directory `AGENTS.md` contracts that tells the agent
+  what each directory owns and *where a new feature belongs* — so work lands in
+  the right architectural layer instead of wherever a file was already open.
 
 ## Quickstart
 

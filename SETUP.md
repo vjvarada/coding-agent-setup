@@ -18,7 +18,7 @@ supports and skip the rest without failing.
 | 1 | **CodeGraph** (MCP) | Sub-ms symbol lookup + call paths + blast radius. Replaces the grep→read→re-read loop that burns the most tokens on large repos. | Claude Code, VS Code Copilot, any MCP host |
 | 2 | **RTK** (Rust Token Killer) | 60–90% fewer tokens on noisy shell output (tests, lint, git, docker). | Claude Code (transparent hook), Copilot (agent prefixes `rtk`) |
 | 3 | **Review + verify skills** | Adversarial code review + end-to-end verification before commit. Catches the expensive class of bug: plausible-but-wrong. | Any agent (methodology + optional slash commands) |
-| 4 | **Project instructions** | A `CLAUDE.md` / `copilot-instructions.md` that encodes the repo's conventions so the agent stops rediscovering them each session. | Both |
+| 4 | **Project instructions + DOX contract** | A root `AGENTS.md`/`CLAUDE.md` that encodes conventions once, plus a hierarchy of per-directory `AGENTS.md` contracts with a *place-before-building* rule — so the agent stops rediscovering the repo AND puts new features in the right architectural layer instead of wherever a file was open. | Any host (plain markdown) |
 
 The single biggest token win on a large codebase is **#1 (CodeGraph)** — a
 grep/read exploration is dozens of tool calls; a CodeGraph query is one. #2 is
@@ -156,7 +156,9 @@ These are methodology, not installs — they work in any agent. See
 
 ---
 
-## 5. Write project instructions (capability #4)
+## 5. Project instructions + DOX architecture contract (capability #4)
+
+### 5.1 Write project instructions
 
 Encode the repo's non-obvious conventions once so every session starts informed:
 
@@ -167,6 +169,36 @@ Encode the repo's non-obvious conventions once so every session starts informed:
 Both should state: the stack + package manager, the build/test command, where
 the architecture docs live, "query CodeGraph before reading files," and the RTK
 rule. Start from `templates/*/` and fill in the repo specifics.
+
+### 5.2 Install the DOX architecture contract
+
+**DOX** is a hierarchy of `AGENTS.md` files: a small root contract, read every
+session, that points to per-directory contracts read on demand as the agent
+descends into a subsystem. The always-loaded top stays tiny (cache-friendly); the
+depth is pulled only where the agent is actually working. This is
+`PLAYBOOK.md` Principle 3 made concrete and Principle 7 (*place before building*)
+made enforceable.
+
+The installer seeds it for you: if the repo has **no** root `AGENTS.md`, it copies
+`templates/shared/AGENTS.md` (non-destructive — it never touches an existing one).
+To do it by hand, copy that template to `AGENTS.md`, fill in the `<...>`
+placeholders (purpose, stack, global constraints, and the **Child DOX Index**),
+and delete the guidance quote block. For each top-level subsystem, copy
+`templates/shared/AGENTS.child.md` to `<subsystem>/AGENTS.md` and add a row to the
+root's Child DOX Index.
+
+The template ships two disciplines the agent must follow — do not strip them:
+
+- **Read Before Editing** — walk the root → target `AGENTS.md` chain and obey the
+  nearest contract before touching a file. Don't rely on memory; re-read in-session.
+- **Place Before Building** — before creating any new feature/module/tool/endpoint,
+  find its architectural home in the Child DOX Index and reuse the owning seam.
+  A feature in the wrong layer is a defect even if it works.
+
+If your host only auto-loads `CLAUDE.md`/`copilot-instructions.md` (not
+`AGENTS.md`), add a one-line pointer there — "read `AGENTS.md` first, and follow
+its Read-Before-Editing and Place-Before-Building rules" — so the chain is entered
+every session.
 
 ---
 
@@ -195,6 +227,7 @@ a tool installed but unused delivers nothing.
 | RTK instruction nudge | ✅ (fallback) | ✅ | ✅ | ✅ |
 | Review / verify | ✅ skills | ✅ methodology | ✅ | ✅ methodology |
 | Project instructions | ✅ CLAUDE.md | ✅ copilot-instructions.md | ✅ | host-specific |
+| DOX architecture contract | ✅ AGENTS.md | ✅ AGENTS.md | ✅ | ✅ (plain markdown) |
 
 If a capability is unsupported, skip it and note it in your setup summary. Do not
 fail the whole setup because one host lacks one feature.

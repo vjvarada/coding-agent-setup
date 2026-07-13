@@ -5,12 +5,13 @@
 #   1. CodeGraph  — symbol/call-graph MCP server (biggest token win on big repos)
 #   2. RTK        — shell-output compressor (60-90% on tests/lint/git/docker)
 #   3. Config     — MCP registration + RTK hook/nudge + project instructions
+#   4. DOX        — seed a root AGENTS.md architecture contract (place-before-building)
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites,
 # no-ops anything already installed. Run from the TARGET repo root, or pass it:
 #   bash coding-agent-setup/install.sh [/path/to/repo]
 #
-# Env toggles: SKIP_CODEGRAPH=1  SKIP_RTK=1  SKIP_CONFIG=1
+# Env toggles: SKIP_CODEGRAPH=1  SKIP_RTK=1  SKIP_CONFIG=1  SKIP_DOX=1
 
 set -uo pipefail
 
@@ -141,6 +142,20 @@ else
       ok "appended RTK block to $CPI"
     fi
   fi
+fi
+
+# ============================================================ 4. DOX =========
+# Seed a root AGENTS.md "DOX" architecture contract (place-before-building) if
+# the repo has none. Non-destructive: never touches an existing AGENTS.md.
+if [ "${SKIP_DOX:-0}" = "1" ]; then
+  skip "DOX architecture contract (SKIP_DOX=1)"
+elif [ -f AGENTS.md ]; then
+  skip "AGENTS.md exists (DOX contract already present — leaving it untouched)"
+elif [ -f "$TEMPLATES/shared/AGENTS.md" ]; then
+  cp "$TEMPLATES/shared/AGENTS.md" AGENTS.md
+  ok "wrote AGENTS.md (DOX root — fill in the <...> placeholders for this repo)"
+else
+  warn "DOX template missing from kit ($TEMPLATES/shared/AGENTS.md)"
 fi
 
 # ============================================================ Verify =========

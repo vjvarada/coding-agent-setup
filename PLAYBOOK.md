@@ -115,6 +115,12 @@ constraints that points to per-directory `AGENTS.md` files, read on demand as th
 agent descends into a subsystem. The always-loaded top stays tiny; depth is
 pulled only when the agent is actually working in that area.
 
+This kit ships that pattern as **DOX** — `templates/shared/AGENTS.md` and
+`SETUP.md §5.2`. DOX adds two disciplines on top of "write it down": *read the
+whole contract chain before editing*, and *place new work in its architectural
+home before building* (Principle 7). The contract is not just a place to record
+conventions — it is the map that makes correct placement decidable.
+
 ---
 
 ## Principle 4 — Verify before you trust (attacks: *the expensive bug class*)
@@ -175,23 +181,62 @@ system. Always `wc`/token-count the suspected sink first; act on the number.
 
 ---
 
+## Principle 7 — Place work in its architectural home *before* building (attacks: *wrong-layer drift*)
+
+The cheapest architectural mistake to prevent and the most expensive to unwind is
+a feature built in the wrong place: a shared capability wedged into a leaf module,
+a deployed-service concern living in a library, a tool dropped into whatever file
+was already open. It compiles, it passes tests, and it quietly erodes the
+boundaries that make the codebase legible — the exact property Principle 1 (symbol
+graph) and Principle 3 (encode conventions) depend on. An agent reasons well only
+about a structure that still means what it says.
+
+**The discipline:** before writing a new feature, module, tool, or endpoint,
+decide where it belongs and confirm that home against the contract — do not default
+to the current directory. Name the *kind* of thing you're adding, find the scope
+that owns that kind, and reuse that scope's existing seam before adding a new one
+(Principle 5's "find the seam," applied at creation time). If nothing fits, the
+answer is a new scope with its own contract, not an orphan file. A feature in the
+wrong layer is a defect even if it works — correct the placement first, then build.
+
+**What makes it enforceable:** a placement rule only works if the map of "what
+goes where" is written down and current. That is what DOX (Principle 3) provides —
+each directory's `AGENTS.md` states what it owns, and the root's child index is the
+routing table. Ship the rule *inside* the contract (`templates/shared/AGENTS.md`
+carries a "Place Before Building" section) so every agent that reads the chain
+before editing also reads where new work is supposed to land. Placement becomes a
+step in the loop, not a thing a reviewer catches after the fact.
+
+*Lesson:* the archetype platform kept an `apps/` split — deployed services vs
+dynamically-loaded agents vs importable skills — that was load-bearing, not
+cosmetic: an agent placed in the wrong group silently failed to load, and a
+capability duplicated one folder over from its owner drifted from the original.
+Writing the split into the contract, with a rule to consult it *before* creating
+anything, turned "reviewer catches it in PR" into "the author never misplaces it."
+
+---
+
 ## Quick reference — the loop
 
-1. **Orient** — read the project instructions; query the symbol graph for the
-   area you're touching (one call, not a grep sweep).
-2. **Change** — edit with the blast radius in view (the graph told you the callers).
-3. **Run** — tests/lint through the output compressor (`rtk pytest`, `rtk ruff`),
+1. **Orient** — read the project instructions and the DOX contract chain for the
+   area you're touching; query the symbol graph (one call, not a grep sweep).
+2. **Place** *(new work only)* — before creating a feature/module/tool, find its
+   architectural home in the DOX child index; reuse the owning seam, don't default
+   to the file you have open.
+3. **Change** — edit with the blast radius in view (the graph told you the callers).
+4. **Run** — tests/lint through the output compressor (`rtk pytest`, `rtk ruff`),
    never through the package runner (`uv run rtk` is broken).
-4. **Review** — adversarial pass; refute findings, keep survivors.
-5. **Verify** — drive the real flow, observe behavior, not just the test result.
-6. **Record** — if you learned something that makes the next change faster, push
-   it back to this kit (see `CONTRIBUTING.md`).
+5. **Review** — adversarial pass; refute findings, keep survivors.
+6. **Verify** — drive the real flow, observe behavior, not just the test result.
+7. **Record** — if you learned something that makes the next change faster, push
+   it back to this kit (see `CONTRIBUTING.md`). Update the owning `AGENTS.md` if the
+   change moved a boundary (DOX "Update After Editing").
 
 ---
 
 ## Going further
 
-These six principles are the core. For the harder practices that keep a codebase
+These seven principles are the core. For the harder practices that keep a codebase
 safe and cheap for agents *over time* — tool risk annotations, fail-closed
 permissions, golden trajectory evals, prompt-cache discipline, auto-compaction
 thresholds, tool naming, and complexity/correctness CI gates — see
