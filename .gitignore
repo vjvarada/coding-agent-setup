@@ -1,5 +1,7 @@
 # Nothing here should be committed by consumers, but if this kit is used in-place:
-.codegraph/
+# (upstream recommends committing graphify-out/ in real repos; not in this kit)
+graphify-out/
+/.graphifyignore
 *.log
 
 # OS / editor cruft

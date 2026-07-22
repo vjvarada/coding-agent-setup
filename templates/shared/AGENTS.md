@@ -86,8 +86,9 @@ Remove stale or contradictory text immediately.
 - Framework(s): <e.g. FastAPI, Next.js>
 - Build / test: <the one-line test command, e.g. `uv run pytest -q`>
 - Data stores / infra: <e.g. Postgres + Redis>
-- Code intelligence: query the CodeGraph symbol graph before reading files; run
-  noisy commands through `rtk` (see the project instructions this kit installs).
+- Code intelligence: query the Graphify knowledge graph (`graphify query` /
+  `path` / `explain`) before reading files; run noisy commands through `rtk`
+  (see the project instructions this kit installs).
 - <Any repo-wide convention an agent cannot cheaply derive.>
 
 ## Global Constraints (Non-Negotiable)

@@ -2,16 +2,16 @@
 # coding-agent-setup installer (Unix / macOS / Git-Bash on Windows).
 #
 # Sets up a codebase for token-efficient agent development:
-#   1. CodeGraph  — symbol/call-graph MCP server (biggest token win on big repos)
-#   2. RTK        — shell-output compressor (60-90% on tests/lint/git/docker)
-#   3. Config     — MCP registration + RTK hook/nudge + project instructions
-#   4. DOX        — seed a root AGENTS.md architecture contract (place-before-building)
+#   1. Graphify  — tree-sitter code knowledge graph (biggest token win on big repos)
+#   2. RTK       — shell-output compressor (60-90% on tests/lint/git/docker)
+#   3. Config    — RTK hook/nudge + project instructions
+#   4. DOX       — seed a root AGENTS.md architecture contract (place-before-building)
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites,
 # no-ops anything already installed. Run from the TARGET repo root, or pass it:
 #   bash coding-agent-setup/install.sh [/path/to/repo]
 #
-# Env toggles: SKIP_CODEGRAPH=1  SKIP_RTK=1  SKIP_CONFIG=1  SKIP_DOX=1
+# Env toggles: SKIP_GRAPHIFY=1  SKIP_RTK=1  SKIP_CONFIG=1  SKIP_DOX=1
 
 set -uo pipefail
 
@@ -59,36 +59,53 @@ PY
 say "target repo: $REPO"
 cd "$REPO"
 
-# ============================================================ 1. CodeGraph ===
-if [ "${SKIP_CODEGRAPH:-0}" = "1" ]; then
-  skip "CodeGraph (SKIP_CODEGRAPH=1)"
+# ============================================================ 1. Graphify ===
+if [ "${SKIP_GRAPHIFY:-0}" = "1" ]; then
+  skip "Graphify (SKIP_GRAPHIFY=1)"
 else
-  if ! have codegraph; then
-    if have npm; then
-      say "installing CodeGraph CLI (npm -g @colbymchenry/codegraph)"
-      npm install -g @colbymchenry/codegraph >/dev/null 2>&1 \
-        && ok "CodeGraph installed ($(codegraph --version 2>/dev/null))" \
-        || warn "npm install failed — install Node/npm then re-run"
+  if ! have graphify; then
+    # package is 'graphifyy' (two y's); the command is 'graphify'
+    if have uv; then
+      say "installing Graphify CLI (uv tool install graphifyy)"
+      uv tool install graphifyy >/dev/null 2>&1
+    elif have pipx; then
+      say "installing Graphify CLI (pipx install graphifyy)"
+      pipx install graphifyy >/dev/null 2>&1
+    elif have pip; then
+      say "installing Graphify CLI (pip install graphifyy)"
+      pip install graphifyy >/dev/null 2>&1
     else
-      warn "npm not found — install Node.js ≥18, then: npm i -g @colbymchenry/codegraph"
+      warn "no uv/pipx/pip — install Python ≥3.10 + uv, then: uv tool install graphifyy"
     fi
+    have graphify \
+      && ok "Graphify installed ($(graphify --version 2>/dev/null))" \
+      || warn "graphify not on PATH — run 'uv tool update-shell' (or 'pipx ensurepath'), open a new shell, re-run"
   else
-    ok "CodeGraph already present ($(codegraph --version 2>/dev/null))"
+    ok "Graphify already present ($(graphify --version 2>/dev/null))"
   fi
 
-  if have codegraph; then
-    # index config (scoped exclude list) — only if repo has none
-    if [ ! -f codegraph.json ] && [ -f "$TEMPLATES/shared/codegraph.json" ]; then
-      cp "$TEMPLATES/shared/codegraph.json" codegraph.json
-      ok "wrote codegraph.json (edit the exclude list for this repo)"
+  if have graphify; then
+    # index scoping (gitignore-syntax excludes) — only if repo has none
+    if [ ! -f .graphifyignore ] && [ -f "$TEMPLATES/shared/.graphifyignore" ]; then
+      cp "$TEMPLATES/shared/.graphifyignore" .graphifyignore
+      ok "wrote .graphifyignore (edit the exclude list for this repo)"
     else
-      skip "codegraph.json exists"
+      skip ".graphifyignore exists"
     fi
-    if [ ! -d .codegraph ]; then
-      say "building initial index (codegraph init) — may take a minute"
-      codegraph init . >/dev/null 2>&1 && ok "index built" || warn "codegraph init failed"
+    # register the /graphify skill + query-first hook (repo-scoped)
+    graphify install --project >/dev/null 2>&1 \
+      && ok "Claude Code: /graphify skill + query-first hook (graphify install --project)" \
+      || warn "graphify install --project failed"
+    graphify install --project --platform copilot >/dev/null 2>&1 \
+      && ok "Copilot CLI: /graphify skill (graphify install --project --platform copilot)" || true
+    # build the code graph (deterministic AST pass, fully offline, no API key)
+    if [ ! -d graphify-out ]; then
+      say "building code graph (graphify extract . --code-only) — may take a minute"
+      graphify extract . --code-only >/dev/null 2>&1 \
+        && ok "graph built (graphify-out/)" \
+        || warn "extract failed — run '/graphify .' in your assistant instead"
     else
-      skip ".codegraph index exists (run 'codegraph sync .' to refresh)"
+      skip "graphify-out exists (run '/graphify . --update' to refresh)"
     fi
   fi
 fi
@@ -111,11 +128,9 @@ fi
 if [ "${SKIP_CONFIG:-0}" = "1" ]; then
   skip "config (SKIP_CONFIG=1)"
 else
-  CG='{"type":"stdio","command":"codegraph","args":["serve","--mcp"]}'
-
-  # -- Claude Code: .mcp.json (key mcpServers) --
-  merge_json ".mcp.json" "{\"mcpServers\":{\"codegraph\":$CG}}" && ok ".mcp.json (Claude Code MCP)" \
-    || warn ".mcp.json merge skipped (see message above)"
+  # Graphify host registration is handled in step 1 (graphify install --project).
+  # Its optional MCP server needs graphifyy[mcp] importable from `python`, so it
+  # is left as a manual step — see SETUP.md §2 and templates/*/mcp.json.
 
   # -- Claude Code: RTK hook + settings --
   if [ -f "$TEMPLATES/claude/hooks/rtk-bash.sh" ]; then
@@ -125,10 +140,6 @@ else
     merge_json ".claude/settings.json" "$(cat "$TEMPLATES/claude/settings.json")" >/dev/null 2>&1
     ok ".claude/ RTK hook + settings"
   fi
-
-  # -- VS Code Copilot: .vscode/mcp.json (key servers) --
-  merge_json ".vscode/mcp.json" "{\"servers\":{\"codegraph\":$CG}}" >/dev/null 2>&1 \
-    && ok ".vscode/mcp.json (Copilot MCP)"
 
   # -- Copilot instructions: append RTK block if absent --
   CPI=".github/copilot-instructions.md"
@@ -160,6 +171,6 @@ fi
 
 # ============================================================ Verify =========
 say "verify:"
-have codegraph && codegraph status . 2>/dev/null | head -3 || true
+have graphify && { graphify --version 2>/dev/null; [ -f graphify-out/graph.json ] && ok "graphify-out/graph.json present"; } || true
 have rtk && rtk --version || true
 say "done. Read coding-agent-setup/SETUP.md §6 and report the numbers."

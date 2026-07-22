@@ -3,7 +3,7 @@
 This is the *why* behind `SETUP.md`. It captures the methodology for working on
 large, unfamiliar, or multi-runtime codebases without burning tokens or shipping
 plausible-but-wrong changes. It is tool-agnostic; the specific tools in `SETUP.md`
-(CodeGraph, RTK) are instances of these principles.
+(Graphify, RTK) are instances of these principles.
 
 **The archetype these lessons came from:** a large multi-agent platform (a
 web/API backend + vector-store-backed memory + an event bus + a web frontend)
@@ -33,19 +33,21 @@ Every principle below attacks one of these four rediscovery costs.
 
 A grep+read exploration of "how does X work" is dozens of tool calls and reads
 whole files to find the relevant lines. A pre-built symbol graph answers the same
-question in **one** call, returning the verbatim source PLUS callers PLUS blast
-radius — and it follows dynamic-dispatch edges (callbacks, event handlers, JSX
-children, framework re-renders) that grep structurally cannot.
+question in **one** call, returning the source location PLUS callers PLUS blast
+radius — and it resolves cross-file call/import/inheritance edges (including
+inferred indirect connections) that grep structurally cannot follow.
 
 **The discipline that matters:** install the graph AND actually use it *first*.
-The failure mode is installing CodeGraph and then grepping out of habit — you pay
+The failure mode is installing Graphify and then grepping out of habit — you pay
 for the index and capture none of the savings. Before reading a file to
 understand or change code, query the graph. Read files only to confirm or edit
-what the graph surfaced.
+what the graph surfaced. (Graphify enforces this structurally: its installer
+adds a query-first hook that nudges — or in `--strict` mode blocks — raw
+source reads until the graph has been consulted.)
 
 **Scope the index.** A symbol graph polluted with generated SQL, migrations,
 minified bundles, and vendored code returns noise. Exclude those explicitly
-(`codegraph.json`). *Lesson:* an index once caught a minified worker bundle
+(`.graphifyignore`). *Lesson:* an index once caught a minified worker bundle
 because the exclude list had `*.min.js` but not `*.min.mjs` — one missing glob
 poisoned symbol search for common words. Be exhaustive with minified/generated
 globs (`*.min.js`, `*.min.mjs`, `*.generated.*`, and friends).

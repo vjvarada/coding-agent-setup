@@ -15,13 +15,13 @@ supports and skip the rest without failing.
 
 | # | Capability | What it buys you | Works in |
 |---|---|---|---|
-| 1 | **CodeGraph** (MCP) | Sub-ms symbol lookup + call paths + blast radius. Replaces the grep→read→re-read loop that burns the most tokens on large repos. | Claude Code, VS Code Copilot, any MCP host |
+| 1 | **Graphify** (code knowledge graph) | Local tree-sitter symbol/call graph queried by plain-language questions, path tracing, and per-symbol explain. Replaces the grep→read→re-read loop that burns the most tokens on large repos. | Claude Code, Copilot (Chat + CLI), Cursor, Codex, Gemini CLI, 15+ hosts; optional MCP server |
 | 2 | **RTK** (Rust Token Killer) | 60–90% fewer tokens on noisy shell output (tests, lint, git, docker). | Claude Code (transparent hook), Copilot (agent prefixes `rtk`) |
 | 3 | **Review + verify skills** | Adversarial code review + end-to-end verification before commit. Catches the expensive class of bug: plausible-but-wrong. | Any agent (methodology + optional slash commands) |
 | 4 | **Project instructions + DOX contract** | A root `AGENTS.md`/`CLAUDE.md` that encodes conventions once, plus a hierarchy of per-directory `AGENTS.md` contracts with a *place-before-building* rule — so the agent stops rediscovering the repo AND puts new features in the right architectural layer instead of wherever a file was open. | Any host (plain markdown) |
 
-The single biggest token win on a large codebase is **#1 (CodeGraph)** — a
-grep/read exploration is dozens of tool calls; a CodeGraph query is one. #2 is
+The single biggest token win on a large codebase is **#1 (Graphify)** — a
+grep/read exploration is dozens of tool calls; a `graphify query` is one. #2 is
 the cheap, immediate win. Do both first.
 
 ---
@@ -48,50 +48,91 @@ below.
 
 ---
 
-## 2. Install CodeGraph (capability #1)
+## 2. Install Graphify (capability #1)
 
-CodeGraph is a local knowledge graph of every symbol/edge/file, exposed as an
-MCP server. Reads are sub-millisecond and it follows dynamic-dispatch edges
-(callbacks, JSX children, re-renders) that grep cannot.
+[Graphify](https://github.com/Graphify-Labs/graphify) turns the repo into a
+local knowledge graph: tree-sitter AST parsing (deterministic, no LLM, nothing
+leaves the machine for code) resolves `calls` / `imports` / `inherits` edges
+across ~40 languages, with every edge tagged `EXTRACTED` (explicit in source)
+or `INFERRED` (resolved, with a confidence score). You query the graph instead
+of grepping: `graphify query "<question>"`, `graphify path A B`,
+`graphify explain <symbol>`.
 
-**Install the CLI** (Node ≥ 18 required):
-
-```bash
-npm install -g @colbymchenry/codegraph
-codegraph --version   # expect 1.2.0 or newer
-```
-
-**Build the index at the repo root:**
+**Install the CLI** (Python ≥ 3.10 required; the package is `graphifyy` — two
+y's — the command is `graphify`):
 
 ```bash
-codegraph init .      # initializes .codegraph/ and builds the initial index
-codegraph status .    # verify: prints symbol/file counts
+uv tool install graphifyy   # or: pipx install graphifyy
+graphify --version
 ```
 
-**Register it as an MCP server** so the agent host can query it. Config shape
-differs per host (this is the single most common setup mistake):
+**Register it with the host** — one command per host; Graphify writes the
+`/graphify` skill plus a query-first hook or instruction file as appropriate:
+
+```bash
+graphify install --project                       # Claude Code (repo-scoped)
+graphify install --project --platform copilot    # GitHub Copilot CLI
+graphify vscode install                          # VS Code Copilot Chat
+graphify cursor install                          # Cursor
+```
+
+On Claude Code the default install adds a `PreToolUse` hook that *nudges* the
+agent to run `graphify query` before raw file reads; add `--strict` to block
+the first raw source read of a session and redirect it to the graph. This is
+built-in enforcement of the "use the graph first" discipline (`PLAYBOOK.md`
+Principle 1).
+
+**Build the graph at the repo root:**
+
+```bash
+graphify extract . --code-only   # headless, fully offline, no API key needed
+```
+
+or run `/graphify .` inside the assistant — this also maps docs/PDFs/SQL into
+the same graph using the IDE session's model (only the docs pass costs tokens;
+the code pass is always free and local). Output lands in `graphify-out/`
+(`graph.json` + `GRAPH_REPORT.md` + an HTML viz); upstream recommends
+committing it so the whole team starts with the map.
+
+**Keep it fresh:** `graphify hook install` rebuilds the code graph on every
+git commit (AST only, no API cost) and adds a merge driver so `graph.json`
+never gets conflict markers. `/graphify . --update` re-extracts only changed
+files; `/graphify . --watch` auto-syncs in a background terminal.
+
+**Scope the graph** to the source agents actually edit. `.gitignore` is
+respected automatically; add a `.graphifyignore` (same syntax, including `!`
+negation) for anything git tracks but agents shouldn't index — generated
+files, migrations, vendored code, minified blobs. Copy
+`templates/shared/.graphifyignore` to the repo root and edit it. (Real example
+excludes: generated SQL schemas, `**/migrations/**`, `*.min.js` AND
+`*.min.mjs`, vendored `reference/**`.)
+
+**Optional — MCP server** for structured tool-call access (`query_graph`,
+`get_node`, `get_neighbors`, `shortest_path`) instead of shelling out to the
+CLI. Needs the `mcp` extra importable from `python` (e.g.
+`pip install "graphifyy[mcp]"` in the project venv — an isolated
+`uv tool` / `pipx` install is not importable from a plain `python`). Config
+shape differs per host (this is the single most common setup mistake):
 
 - **Claude Code** — `.mcp.json` at repo root, key `mcpServers`:
   ```json
-  { "mcpServers": { "codegraph": { "type": "stdio", "command": "codegraph", "args": ["serve", "--mcp"] } } }
+  { "mcpServers": { "graphify": { "type": "stdio", "command": "python", "args": ["-m", "graphify.serve", "graphify-out/graph.json"] } } }
   ```
 - **VS Code Copilot** — `.vscode/mcp.json`, key `servers` (NOT `mcpServers`):
   ```json
-  { "servers": { "codegraph": { "type": "stdio", "command": "codegraph", "args": ["serve", "--mcp"] } } }
+  { "servers": { "graphify": { "type": "stdio", "command": "python", "args": ["-m", "graphify.serve", "graphify-out/graph.json"] } } }
   ```
 
 Copy templates from `coding-agent-setup/templates/` rather than hand-typing.
+A team can instead share one HTTP server:
+`python -m graphify.serve graphify-out/graph.json --transport http --port 8080`.
 
-**Scope the index** to the source agents actually edit — drop generated files,
-migrations, vendored code, and huge minified blobs, or they pollute symbol
-search. Copy `templates/shared/codegraph.json` to the repo root and edit the
-`exclude` list for this repo. (Real example excludes: generated SQL schemas,
-`**/migrations/**`, `**/*.min.js` AND `**/*.min.mjs`, vendored `reference/**`.)
-
-**Then USE it.** Before reading a file to understand or change code, query
-CodeGraph first — one call returns the verbatim source plus callers plus blast
-radius. This is where the token savings actually happen; installing it and then
-grepping anyway wastes the investment.
+**Then USE it.** Before reading a file to understand or change code, query the
+graph first — `graphify query` returns a scoped subgraph for a plain-language
+question; `graphify explain` returns a symbol's source location plus every
+caller/callee edge. This is where the token savings actually happen;
+installing it and then grepping anyway wastes the investment (the query-first
+hook exists to prevent exactly that).
 
 ---
 
@@ -118,7 +159,7 @@ rtk --version                 # expect 0.43.0 or newer
   `templates/claude/hooks/rtk-bash.sh` + the `.claude/settings.json` block —
   NOT the stock `rtk init`, which mis-handles `uv run` (produces the broken
   `uv run rtk ...`) and hijacks file reads (`cat`→`rtk read`, worse than
-  CodeGraph/Read). The wrapper is a strict allowlist that skips both.
+  Graphify/Read). The wrapper is a strict allowlist that skips both.
 
   > ⚠️ The hook returns `permissionDecision:"allow"` so the rewrite takes effect,
   > which auto-approves the rewritten command. The allowlist (git/pytest/ruff/
@@ -133,7 +174,7 @@ rtk --version                 # expect 0.43.0 or newer
   *does* support the real hook via `rtk init --global --copilot`.)
 
 **Never** `rtk` a `uv run` command (rtk is a standalone binary, not a uv tool),
-and prefer CodeGraph/native Read over `rtk read` for files.
+and prefer Graphify queries/native Read over `rtk read` for files.
 
 ---
 
@@ -167,8 +208,11 @@ Encode the repo's non-obvious conventions once so every session starts informed:
   `.github/instructions/*.instructions.md` with `applyTo` frontmatter).
 
 Both should state: the stack + package manager, the build/test command, where
-the architecture docs live, "query CodeGraph before reading files," and the RTK
-rule. Start from `templates/*/` and fill in the repo specifics.
+the architecture docs live, "run `graphify query` before reading files," and
+the RTK rule. Start from `templates/*/` and fill in the repo specifics.
+(`graphify install --project` writes much of this automatically — the
+query-first hook for Claude Code, `.cursor/rules/` for Cursor, `AGENTS.md`
+for Codex/OpenCode.)
 
 ### 5.2 Install the DOX architecture contract
 
@@ -205,16 +249,18 @@ every session.
 ## 6. Verify (do this — report real numbers)
 
 ```bash
-# CodeGraph answers a real question about THIS repo in one call:
-codegraph explore "where is the main entry point"     # expect source + call paths
+# Graphify answers a real question about THIS repo in one call:
+graphify query "where is the main entry point"   # expect a scoped subgraph with source locations
+graphify explain "<a real symbol in this repo>"  # expect source line + caller/callee edges
 
 # RTK actually reduces tokens (run on a real diff in this repo):
-rtk gain                                               # after a few rtk commands, shows % saved
+rtk gain                                          # after a few rtk commands, shows % saved
 ```
 
-Report back: CodeGraph index symbol count, and the RTK reduction % on a real
-command. If either is zero or errors, debug it before declaring setup complete —
-a tool installed but unused delivers nothing.
+Report back: the node/edge counts from the graph build (printed by
+`graphify extract` / `/graphify .`, or visible in `graphify-out/GRAPH_REPORT.md`),
+and the RTK reduction % on a real command. If either is zero or errors, debug it
+before declaring setup complete — a tool installed but unused delivers nothing.
 
 ---
 
@@ -222,7 +268,8 @@ a tool installed but unused delivers nothing.
 
 | Capability | Claude Code | VS Code Copilot Chat | Copilot CLI | Cursor / other MCP host |
 |---|---|---|---|---|
-| CodeGraph MCP | ✅ `.mcp.json` | ✅ `.vscode/mcp.json` | ✅ | ✅ (host's MCP config) |
+| Graphify skill + query-first hook | ✅ `graphify install --project` | ✅ `graphify vscode install` | ✅ `--platform copilot` | ✅ `graphify cursor install` / 15+ hosts |
+| Graphify MCP (optional) | ✅ `.mcp.json` | ✅ `.vscode/mcp.json` | ✅ | ✅ (host's MCP config) |
 | RTK transparent hook | ✅ | ❌ (use nudge) | ✅ | depends on hook support |
 | RTK instruction nudge | ✅ (fallback) | ✅ | ✅ | ✅ |
 | Review / verify | ✅ skills | ✅ methodology | ✅ | ✅ methodology |

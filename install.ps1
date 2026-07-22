@@ -1,20 +1,20 @@
 # coding-agent-setup installer (Windows PowerShell 7+).
 #
 # Sets up a codebase for token-efficient agent development:
-#   1. CodeGraph  — symbol/call-graph MCP server
-#   2. RTK        — shell-output compressor
-#   3. Config     — MCP registration + RTK hook/nudge + project instructions
-#   4. DOX        — seed a root AGENTS.md architecture contract (place-before-building)
+#   1. Graphify  — tree-sitter code knowledge graph
+#   2. RTK       — shell-output compressor
+#   3. Config    — RTK hook/nudge + project instructions
+#   4. DOX       — seed a root AGENTS.md architecture contract (place-before-building)
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites.
 # Run from the target repo root, or pass -Repo <path>.
 #   pwsh coding-agent-setup/install.ps1 [-Repo C:\path\to\repo]
 #
-# Toggles: -SkipCodegraph  -SkipRtk  -SkipConfig  -SkipDox
+# Toggles: -SkipGraphify  -SkipRtk  -SkipConfig  -SkipDox
 
 param(
   [string]$Repo = (Get-Location).Path,
-  [switch]$SkipCodegraph,
+  [switch]$SkipGraphify,
   [switch]$SkipRtk,
   [switch]$SkipConfig,
   [switch]$SkipDox
@@ -56,29 +56,40 @@ function Merge-Json ($Target, $Add) {
 Say "target repo: $Repo"
 Set-Location $Repo
 
-$CG = @{ type = "stdio"; command = "codegraph"; args = @("serve", "--mcp") }
-
-# ===================================================== 1. CodeGraph ==========
-if ($SkipCodegraph) { Skip "CodeGraph (-SkipCodegraph)" }
+# ===================================================== 1. Graphify ===========
+if ($SkipGraphify) { Skip "Graphify (-SkipGraphify)" }
 else {
-  if (-not (Have codegraph)) {
-    if (Have npm) {
-      Say "installing CodeGraph CLI (npm -g @colbymchenry/codegraph)"
-      npm install -g @colbymchenry/codegraph 2>&1 | Out-Null
-      if (Have codegraph) { Ok "CodeGraph installed ($(codegraph --version))" } else { Warn "npm install failed" }
-    } else { Warn "npm not found — install Node.js >=18, then: npm i -g @colbymchenry/codegraph" }
-  } else { Ok "CodeGraph already present ($(codegraph --version))" }
+  if (-not (Have graphify)) {
+    # package is 'graphifyy' (two y's); the command is 'graphify'
+    if (Have uv) {
+      Say "installing Graphify CLI (uv tool install graphifyy)"
+      uv tool install graphifyy 2>&1 | Out-Null
+    } elseif (Have pipx) {
+      Say "installing Graphify CLI (pipx install graphifyy)"
+      pipx install graphifyy 2>&1 | Out-Null
+    } elseif (Have pip) {
+      Say "installing Graphify CLI (pip install graphifyy)"
+      pip install graphifyy 2>&1 | Out-Null
+    } else { Warn "no uv/pipx/pip — install Python >=3.10 + uv (winget install astral-sh.uv), then: uv tool install graphifyy" }
+    if (Have graphify) { Ok "Graphify installed ($(graphify --version))" }
+    else { Warn "graphify not on PATH — run 'uv tool update-shell' (or 'pipx ensurepath'), open a new shell, re-run" }
+  } else { Ok "Graphify already present ($(graphify --version))" }
 
-  if (Have codegraph) {
-    $cgJson = Join-Path $Templates "shared\codegraph.json"
-    if ((-not (Test-Path "codegraph.json")) -and (Test-Path $cgJson)) {
-      Copy-Item $cgJson "codegraph.json"; Ok "wrote codegraph.json (edit exclude list)"
-    } else { Skip "codegraph.json exists" }
-    if (-not (Test-Path ".codegraph")) {
-      Say "building initial index (codegraph init)"
-      codegraph init . 2>&1 | Out-Null
-      if (Test-Path ".codegraph") { Ok "index built" } else { Warn "codegraph init failed" }
-    } else { Skip ".codegraph index exists (run 'codegraph sync .')" }
+  if (Have graphify) {
+    $gfIgnore = Join-Path $Templates "shared\.graphifyignore"
+    if ((-not (Test-Path ".graphifyignore")) -and (Test-Path $gfIgnore)) {
+      Copy-Item $gfIgnore ".graphifyignore"; Ok "wrote .graphifyignore (edit exclude list)"
+    } else { Skip ".graphifyignore exists" }
+    # register the /graphify skill + query-first hook (repo-scoped)
+    graphify install --project 2>&1 | Out-Null
+    Ok "Claude Code: /graphify skill + query-first hook (graphify install --project)"
+    graphify install --project --platform copilot 2>&1 | Out-Null
+    # build the code graph (deterministic AST pass, fully offline, no API key)
+    if (-not (Test-Path "graphify-out")) {
+      Say "building code graph (graphify extract . --code-only)"
+      graphify extract . --code-only 2>&1 | Out-Null
+      if (Test-Path "graphify-out") { Ok "graph built (graphify-out/)" } else { Warn "extract failed — run '/graphify .' in your assistant instead" }
+    } else { Skip "graphify-out exists (run '/graphify . --update' to refresh)" }
   }
 }
 
@@ -97,8 +108,9 @@ else {
 # ===================================================== 3. Config =============
 if ($SkipConfig) { Skip "config (-SkipConfig)" }
 else {
-  Merge-Json ".mcp.json"        @{ mcpServers = @{ codegraph = $CG } }; Ok ".mcp.json (Claude Code MCP)"
-  Merge-Json ".vscode\mcp.json" @{ servers    = @{ codegraph = $CG } }; Ok ".vscode/mcp.json (Copilot MCP)"
+  # Graphify host registration is handled in step 1 (graphify install --project).
+  # Its optional MCP server needs graphifyy[mcp] importable from `python`, so it
+  # is left as a manual step — see SETUP.md section 2 and templates/*/mcp.json.
 
   $hook = Join-Path $Templates "claude\hooks\rtk-bash.sh"
   if (Test-Path $hook) {
@@ -138,6 +150,9 @@ else {
 
 # ===================================================== Verify ================
 Say "verify:"
-if (Have codegraph) { codegraph status . 2>&1 | Select-Object -First 3 }
+if (Have graphify) {
+  graphify --version
+  if (Test-Path "graphify-out\graph.json") { Ok "graphify-out/graph.json present" }
+}
 if (Have rtk) { rtk --version }
 Say "done. Read coding-agent-setup/SETUP.md section 6 and report the numbers."

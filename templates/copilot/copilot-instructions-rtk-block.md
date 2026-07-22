@@ -17,15 +17,23 @@ Do **not** use `rtk` for:
 
 - `uv run ...` — `rtk` is a standalone binary, not a uv tool; run tests as bare
   `rtk pytest ...` (or `rtk pip ...`, which auto-detects uv), never `uv run rtk`.
-- Reading files — prefer the CodeGraph MCP and the editor's file tools over
+- Reading files — prefer Graphify queries and the editor's file tools over
   `rtk read`; they give better, symbol-aware context.
 
 If `rtk` is not installed (`rtk --version` fails), run commands normally.
 
-## Code intelligence — use the CodeGraph MCP
+## Code intelligence — query the Graphify graph
 
-A `codegraph` MCP server is configured in `.vscode/mcp.json`. It is a pre-indexed
-knowledge graph of every symbol, edge, and file. Prefer one `codegraph` query
-over a grep + read loop when locating code, understanding call paths, or checking
-a change's blast radius — it returns the verbatim source plus who calls it, in
-far fewer round-trips.
+This repo has a Graphify knowledge graph (`graphify-out/graph.json`): every
+symbol, call/import/inherit edge, and file, pre-indexed with tree-sitter.
+Prefer one graph query over a grep + read loop when locating code,
+understanding call paths, or checking a change's blast radius:
+
+- `graphify query "<plain-language question>"` — scoped subgraph with source locations
+- `graphify path <A> <B>` — how two symbols/concepts connect
+- `graphify explain <symbol>` — source line plus every caller/callee edge
+
+If a `graphify` MCP server is configured in `.vscode/mcp.json`, use its tools
+(`query_graph`, `get_node`, `get_neighbors`, `shortest_path`) instead of the
+terminal. If the graph is stale or missing, rebuild with
+`graphify extract . --code-only`.

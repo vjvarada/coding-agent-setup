@@ -8,7 +8,7 @@ in over time. They are drawn from the
 [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering)
 categories and proven on a real multi-agent platform.
 
-**These are PRACTICES, not installers.** Unlike CodeGraph and RTK, most of these
+**These are PRACTICES, not installers.** Unlike Graphify and RTK, most of these
 are patterns you implement against your own stack — there is no universal binary
 to drop in. Each entry says what it is, why it helps, and how to apply it.
 Where a portable artifact exists, `SETUP.md` / `templates/` ship it and this doc

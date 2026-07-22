@@ -1,0 +1,14 @@
+# .graphifyignore — Graphify index scoping (same syntax as .gitignore, incl. ! negation).
+# Graphify already respects .gitignore in every directory (node_modules, .venv,
+# dist, build, etc. are usually excluded there). List here what git TRACKS but
+# coding agents should not index — generated files, migrations, vendored code,
+# and minified blobs otherwise pollute symbol search.
+# EDIT THIS LIST for your repo; the entries below are illustrative.
+
+**/migrations/**
+*.min.js
+*.min.mjs
+*.generated.*
+__pycache__/
+vendor/
+reference/

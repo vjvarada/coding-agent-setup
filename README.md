@@ -7,8 +7,10 @@ Point a coding agent (Claude Code, GitHub Copilot, Cursor, or any MCP-capable
 host) at [`SETUP.md`](SETUP.md) and it installs and wires up the systems that
 make large, unfamiliar codebases cheap and fast to work on:
 
-- **CodeGraph** — a symbol/call-graph MCP server. One query replaces the
-  grep→read→re-read loop that burns the most tokens on big repos.
+- **[Graphify](https://github.com/Graphify-Labs/graphify)** — a local
+  tree-sitter code knowledge graph (with an optional MCP server). One
+  `graphify query` replaces the grep→read→re-read loop that burns the most
+  tokens on big repos.
 - **RTK (Rust Token Killer)** — filters noisy shell output (tests, lint, git,
   docker) by 60–90% before it reaches the model's context.
 - **Review + verify discipline** — adversarial review and end-to-end

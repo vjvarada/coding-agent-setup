@@ -9,7 +9,7 @@
 # The stock rtk hook rewrites EVERYTHING, including two cases that are wrong:
 #   1. `uv run pytest ...` -> `uv run rtk pytest ...`  (BROKEN: rtk is a
 #      standalone binary, not a uv-managed tool)
-#   2. `cat FILE` / head / tail -> `rtk read FILE`     (UNWANTED: CodeGraph and
+#   2. `cat FILE` / head / tail -> `rtk read FILE`     (UNWANTED: Graphify and
 #      the built-in Read tool give better, symbol-aware file context)
 # So this wrapper is a STRICT ALLOWLIST: it rewrites only safe command classes
 # and passes everything else through untouched.
