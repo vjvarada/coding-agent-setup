@@ -218,6 +218,99 @@ anything, turned "reviewer catches it in PR" into "the author never misplaces it
 
 ---
 
+## Principle 8 — Autonomy is capped by verifiability, not by model quality (attacks: *plans agents can't execute*)
+
+The moment you point more than one agent at a project, the bottleneck stops being
+how well they code and becomes whether the plan can be *executed without asking
+anyone a question*. A ticket whose done-when is "works well", "looks right", or
+"owner call" cannot be completed autonomously — no signal exists that would let
+any agent, or any reviewer of its output, conclude it is finished. No model
+improvement changes that; it is a property of the plan.
+
+So the highest-leverage work in a multi-agent setup is not agent design. It is
+**converting acceptance criteria into commands.** Every item you make checkable
+converts directly into autonomous throughput; everything else is plumbing around
+that one number.
+
+The practical form is a contract each spec must satisfy before any agent may
+build from it — dated status verified against code, explicit non-goals,
+machine-checkable acceptance per item, file paths re-verified at dispatch,
+exact verification commands, a single owning document, and a gate label per item.
+An auditor agent tests the contract and refuses work that fails it.
+
+*Lesson:* the first honest audit of a large, carefully-written spec corpus found
+most workstreams only *partly* dispatchable — a buildable half plus a flag flip,
+a spend, or a product decision. "Cleared, but narrowed to this half" became the
+auditor's most common verdict, and splitting those rows in two was worth more
+than any prompt tuning. The audit also kept finding the opposite defect: specs
+claiming work was unbuilt when it had shipped, which sends an implementer to
+build it a second time. Verify status against code, not against the document.
+
+---
+
+## Principle 9 — Durable state lives in the repo, never in an agent (attacks: *fragile long runs*)
+
+A multi-agent run that holds its state in a conversation is one compaction, one
+crash, or one context limit away from losing everything. Put the queue in a file:
+a work plan that owns ordering, ownership, and dispatchability, with each spec's
+status header as the completion record.
+
+Then every cycle's last act is to **write back what shipped and what remains —
+for a reader with no memory of that cycle.** This is what makes the loop
+resumable rather than one long fragile session, and what makes a bad run
+debuggable: the evidence is in the diff and the board, not in a transcript nobody
+kept.
+
+Two corollaries worth enforcing:
+
+- **An agent that "remembers" instead of recording has failed**, even when its
+  output was correct — the next cycle is a fresh context that can see only the repo.
+- **The supervisor must not read what it delegates.** An orchestrator that reads
+  specs and source itself exhausts its context in two cycles. It dispatches, keeps
+  the verdicts, and discards the rest.
+
+*Lesson:* the most easily-missed version of this is configuration. A harness
+directory that is gitignored reaches no fresh clone, no worktree, and no headless
+run — the loop silently degrades to a single unguarded agent, with no error to
+notice. Check what is actually committed before running anything unattended.
+
+---
+
+## Principle 10 — Gate what agents must not do in code, not in prose (attacks: *instruction drift*)
+
+Instructions degrade over a long unattended run; a hook does not. Anything that
+is outward-facing, hard to reverse, credential-bearing, or costly — deploy,
+production flag flips, force-push, publishing, destructive data operations,
+spending — belongs in a `PreToolUse` guard that blocks it deterministically,
+declared as data so it is reviewable and testable.
+
+State the same gates in the agent prompts *as well*. The redundancy is
+deliberate: the prompt makes the agent refuse coherently and explain what the
+human needs to do; the hook makes the refusal real when the prompt is forgotten.
+
+Two rules keep it honest:
+
+- **A gate that exists in the plan but not in the guard config is not a gate.**
+  Add both in the same change.
+- **Test every gate.** An untested regex is a guess, and both failure directions
+  are expensive: over-matching blocks ordinary work until someone disables the
+  guard entirely; under-matching means the boundary you believe in does not exist.
+
+The corollary for the loop's shape: stop it at **"PR opened"**. Every other
+safeguard checks *correctness*, and a confident wrong change looks correct from
+the inside. The human at the end is not re-checking the tests — they are the only
+reader asking whether this should ship at all.
+
+*Lesson:* a guard written this way blocked its own author's *test command* on
+first run, because the test string contained a force-push pattern. Crude, and
+exactly right: it failed closed on an ambiguous input rather than reasoning its
+way to an exception.
+
+The full methodology — the two loops, the seven roles, where wireframes and evals
+fit, what stays human, and the cost model — is in [`ORCHESTRATION.md`](ORCHESTRATION.md).
+
+---
+
 ## Quick reference — the loop
 
 1. **Orient** — read the project instructions and the DOX contract chain for the
@@ -232,13 +325,21 @@ anything, turned "reviewer catches it in PR" into "the author never misplaces it
 6. **Verify** — drive the real flow, observe behavior, not just the test result.
 7. **Record** — if you learned something that makes the next change faster, push
    it back to this kit (see `CONTRIBUTING.md`). Update the owning `AGENTS.md` if the
-   change moved a boundary (DOX "Update After Editing").
+   change moved a boundary (DOX "Update After Editing"). If the work came off a
+   plan, write back what shipped and what remains, for a reader with no memory of
+   this session (Principle 9).
+
+Steps 1–7 are one agent on one change. When the work is a *project* rather than a
+change — a queue of features, planned and dispatched over days — that loop becomes
+the inner half of a larger one: plan → wireframe → spec → audit, then dispatch →
+build → verify → review → PR, with the plan itself living in the repo. See
+[`ORCHESTRATION.md`](ORCHESTRATION.md).
 
 ---
 
 ## Going further
 
-These seven principles are the core. For the harder practices that keep a codebase
+These ten principles are the core. For the harder practices that keep a codebase
 safe and cheap for agents *over time* — tool risk annotations, fail-closed
 permissions, golden trajectory evals, prompt-cache discipline, auto-compaction
 thresholds, tool naming, and complexity/correctness CI gates — see

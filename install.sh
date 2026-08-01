@@ -6,12 +6,13 @@
 #   2. RTK       — shell-output compressor (60-90% on tests/lint/git/docker)
 #   3. Config    — RTK hook/nudge + project instructions
 #   4. DOX       — seed a root AGENTS.md architecture contract (place-before-building)
+#   5. Loop      — supervisor-worker planning + dispatch agents, commands, owner-gate hook
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites,
 # no-ops anything already installed. Run from the TARGET repo root, or pass it:
 #   bash coding-agent-setup/install.sh [/path/to/repo]
 #
-# Env toggles: SKIP_GRAPHIFY=1  SKIP_RTK=1  SKIP_CONFIG=1  SKIP_DOX=1
+# Env toggles: SKIP_GRAPHIFY=1  SKIP_RTK=1  SKIP_CONFIG=1  SKIP_DOX=1  SKIP_LOOP=1
 
 set -uo pipefail
 
@@ -28,7 +29,8 @@ warn() { printf '\033[1;31m warn \033[0m %s\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # JSON deep-merge helper (python is near-universal; jq optional).
-# merge_json <target-file> <json-to-merge>  — merges keys, target wins on leaf conflicts? no: source adds only missing.
+# merge_json <target-file> <json-to-merge>  — adds missing keys; appends missing
+# list items (so a second hook lands next to an existing one). Never clobbers.
 merge_json() {
   local target="$1" addition="$2"
   python - "$target" "$addition" <<'PY'
@@ -46,6 +48,11 @@ def deep(dst, src):
     for k, v in src.items():
         if isinstance(v, dict) and isinstance(dst.get(k), dict):
             deep(dst[k], v)
+        elif isinstance(v, list) and isinstance(dst.get(k), list):
+            # append only entries that aren't already there — keeps re-runs a no-op
+            for item in v:
+                if item not in dst[k]:
+                    dst[k].append(item)
         elif k not in dst:            # never clobber an existing key
             dst[k] = v
 deep(cur, add)
@@ -132,7 +139,7 @@ else
   # Its optional MCP server needs graphifyy[mcp] importable from `python`, so it
   # is left as a manual step — see SETUP.md §2 and templates/*/mcp.json.
 
-  # -- Claude Code: RTK hook + settings --
+  # -- Claude Code: RTK hook + settings (settings also registers plan-guard) --
   if [ -f "$TEMPLATES/claude/hooks/rtk-bash.sh" ]; then
     mkdir -p .claude/hooks
     cp "$TEMPLATES/claude/hooks/rtk-bash.sh" .claude/hooks/rtk-bash.sh
@@ -169,8 +176,66 @@ else
   warn "DOX template missing from kit ($TEMPLATES/shared/AGENTS.md)"
 fi
 
+# ============================================================ 5. LOOP =======
+# Planning + dispatch loop: subagent roles, slash commands, and the owner-gate
+# hook. Copies files only if absent — never overwrites a customised agent.
+# Deliberately does NOT seed a work plan: a board of placeholder rows is worse
+# than no board. See SETUP.md §6 and ORCHESTRATION.md.
+if [ "${SKIP_LOOP:-0}" = "1" ]; then
+  skip "planning + dispatch loop (SKIP_LOOP=1)"
+elif [ ! -d "$TEMPLATES/claude/agents" ]; then
+  warn "loop templates missing from kit ($TEMPLATES/claude/agents)"
+else
+  mkdir -p .claude/agents .claude/commands .claude/hooks
+  copied=0; kept=0
+  for f in "$TEMPLATES"/claude/agents/*.md; do
+    dest=".claude/agents/$(basename "$f")"
+    if [ -f "$dest" ]; then kept=$((kept+1)); else cp "$f" "$dest"; copied=$((copied+1)); fi
+  done
+  for f in "$TEMPLATES"/claude/commands/*.md; do
+    dest=".claude/commands/$(basename "$f")"
+    if [ -f "$dest" ]; then kept=$((kept+1)); else cp "$f" "$dest"; copied=$((copied+1)); fi
+  done
+  ok "dispatch-loop agents + commands ($copied added, $kept left as-is)"
+
+  for f in plan-guard.mjs plan-guard.test.mjs; do
+    if [ -f ".claude/hooks/$f" ]; then skip ".claude/hooks/$f exists"
+    else cp "$TEMPLATES/claude/hooks/$f" ".claude/hooks/$f"; ok ".claude/hooks/$f"; fi
+  done
+
+  if [ -f .claude/plan-guard.config.json ]; then
+    skip "plan-guard.config.json exists (your gates left untouched)"
+  else
+    cp "$TEMPLATES/claude/plan-guard.config.json" .claude/plan-guard.config.json
+    ok "plan-guard.config.json — EDIT IT: add this project's production flags and gates"
+  fi
+
+  if have node; then
+    node .claude/hooks/plan-guard.test.mjs >/dev/null 2>&1 \
+      && ok "plan-guard self-test passed" \
+      || warn "plan-guard self-test FAILED — run: node .claude/hooks/plan-guard.test.mjs"
+  else
+    warn "node not found — plan-guard cannot run; the loop would be UNGUARDED"
+  fi
+
+  # Copilot / no-subagent hosts: sequential-role instructions
+  CPI=".github/copilot-instructions.md"
+  if [ -f "$TEMPLATES/copilot/orchestration-instructions.md" ]; then
+    mkdir -p .github
+    if [ -f "$CPI" ] && grep -q "Planning and dispatch loop" "$CPI" 2>/dev/null; then
+      skip "copilot-instructions.md already has the dispatch-loop block"
+    else
+      printf '\n' >> "$CPI"
+      cat "$TEMPLATES/copilot/orchestration-instructions.md" >> "$CPI"
+      ok "appended dispatch-loop block to $CPI"
+    fi
+  fi
+
+  say "next: copy templates/shared/work-plan.md + spec.md into your docs and fill them in by hand (SETUP.md §6.3)"
+fi
+
 # ============================================================ Verify =========
 say "verify:"
 have graphify && { graphify --version 2>/dev/null; [ -f graphify-out/graph.json ] && ok "graphify-out/graph.json present"; } || true
 have rtk && rtk --version || true
-say "done. Read coding-agent-setup/SETUP.md §6 and report the numbers."
+say "done. Read coding-agent-setup/SETUP.md §7 and report the numbers."

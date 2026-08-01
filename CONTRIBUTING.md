@@ -36,6 +36,13 @@ proven on a real change.
    - New/changed tool or setup step → `SETUP.md` (and `install.sh` +
      `install.ps1` if it should auto-install, and `templates/` if it ships config).
    - A general lesson → `PLAYBOOK.md`, as a principle + the case that taught it.
+   - Something about planning, agent roles, or the dispatch loop →
+     `ORCHESTRATION.md` (and the affected agent prompt in
+     `templates/claude/agents/`). Changing a role's prompt is changing an
+     interface: state what its report must still contain, because the supervisor
+     and the downstream agents parse it.
+   - A new owner gate → `templates/claude/plan-guard.config.json` **and** a case
+     in `plan-guard.test.mjs`. An untested gate is a guess; ship both or neither.
 3. **Keep the installers idempotent and non-destructive.** They must merge into
    existing config, never overwrite, and no-op what's already present. Test a
    re-run: running twice must be a clean no-op.

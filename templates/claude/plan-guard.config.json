@@ -1,0 +1,92 @@
+{
+  "_readme": [
+    "Owner gates for the autonomous dispatch loop, enforced by .claude/hooks/plan-guard.mjs.",
+    "These are the actions an agent must never take unattended, however good its reasons.",
+    "Prompts degrade over a long run; this file does not — it is the actual boundary.",
+    "",
+    "The defaults below are project-agnostic: hard-to-reverse, outward-facing, or",
+    "credential-bearing. ADD YOUR PROJECT'S OWN, especially: production feature-flag",
+    "flips, anything that reaches a live customer, and any command that costs money.",
+    "",
+    "Keep this file and the owner-gate section of your work plan in sync — a gate that",
+    "exists in prose but not here is not a gate. Add a case to plan-guard.test.mjs with",
+    "every new entry, and run: node .claude/hooks/plan-guard.test.mjs",
+    "",
+    "Fields: pattern = JS regex source (case-insensitive) tested against the Bash",
+    "command; scanContent = also reject file writes whose CONTENT matches."
+  ],
+
+  "protectedBranches": ["main", "master"],
+
+  "commandGates": [
+    {
+      "id": "force-push",
+      "pattern": "\\bgit\\b[^\\n]*\\bpush\\b[^\\n]*(--force|--mirror|\\s-f\\b)",
+      "why": "Force-push discards history that may not exist anywhere else."
+    },
+    {
+      "id": "history-rewrite",
+      "pattern": "\\bgit\\b[^\\n]*\\b(filter-branch|filter-repo)\\b|\\bgit\\s+reset\\s+--hard\\s+origin\\b",
+      "why": "History rewriting is unrecoverable for anyone who already pulled."
+    },
+    {
+      "id": "branch-delete-remote",
+      "pattern": "\\bgit\\s+push\\b[^\\n]*\\s(--delete|:)\\s*\\S",
+      "why": "Deleting a remote branch destroys work the agent cannot restore."
+    },
+    {
+      "id": "deploy",
+      "pattern": "\\b(deploy|release)[\\w./-]*\\.(sh|ps1)\\b|\\b(npm|pnpm|yarn|make|just)\\s+run?\\s*deploy\\b|\\bvercel\\s+(deploy|--prod)|\\bfly\\s+deploy\\b|\\bnetlify\\s+deploy\\b",
+      "why": "Deploying is outward-facing and often auto-applies migrations the agent cannot undo."
+    },
+    {
+      "id": "infra-apply",
+      "pattern": "\\bterraform\\s+(apply|destroy)\\b|\\bpulumi\\s+(up|destroy)\\b|\\bhelm\\s+(upgrade|uninstall)\\b|\\bkubectl\\s+(delete|apply)\\b",
+      "why": "Infrastructure mutation is expensive and hard to reverse."
+    },
+    {
+      "id": "remote-shell",
+      "pattern": "\\bssh\\s+[\\w.-]+@|\\bscp\\s+[^\\n]*@[\\w.-]+:",
+      "why": "Reaching a live host steps outside the repo, where nothing is reviewable or revertible."
+    },
+    {
+      "id": "destructive-db",
+      "pattern": "\\bDROP\\s+(DATABASE|TABLE|SCHEMA)\\b|\\bTRUNCATE\\s+TABLE\\b|\\bmigrate\\s+reset\\b|\\bdb:(reset|drop)\\b",
+      "why": "Destroys data. Never unattended."
+    },
+    {
+      "id": "publish",
+      "pattern": "\\bnpm\\s+publish\\b|\\bcargo\\s+publish\\b|\\btwine\\s+upload\\b|\\bgh\\s+release\\s+create\\b",
+      "why": "Publishing is public and effectively permanent."
+    },
+    {
+      "id": "read-secrets",
+      "pattern": "(^|\\s)(cat|type|Get-Content|less|head|tail)\\s+[^\\n|]*(\\.env|credentials|id_rsa|\\.pem)\\b",
+      "why": "Pulls live credentials into a transcript."
+    },
+    {
+      "id": "prod-flag-flip",
+      "pattern": "\\b(ENABLE_PROD_[A-Z_]+|__REPLACE_WITH_YOUR_FLAGS__)\\s*[=:]\\s*[\"']?(1|true|on)\\b",
+      "why": "Enabling a production feature flag is an owner decision. REPLACE this pattern with your project's real flag names.",
+      "scanContent": true
+    }
+  ],
+
+  "pathGates": [
+    {
+      "id": "dotenv",
+      "pattern": "(^|[\\\\/])\\.env(\\.|$)",
+      "why": "Environment files hold live credentials."
+    },
+    {
+      "id": "deploy-dir",
+      "pattern": "(^|[\\\\/])(deploy|infra|terraform|\\.github[\\\\/]workflows)[\\\\/]",
+      "why": "Deploy, infrastructure and CI definitions run against real environments."
+    },
+    {
+      "id": "secrets-files",
+      "pattern": "(^|[\\\\/])(secrets?|credentials)([\\\\/]|\\.)|\\.(pem|p12|key)$",
+      "why": "Credential material."
+    }
+  ]
+}

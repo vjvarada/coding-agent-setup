@@ -5,19 +5,21 @@
 #   2. RTK       — shell-output compressor
 #   3. Config    — RTK hook/nudge + project instructions
 #   4. DOX       — seed a root AGENTS.md architecture contract (place-before-building)
+#   5. Loop      — supervisor-worker planning + dispatch agents, commands, owner-gate hook
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites.
 # Run from the target repo root, or pass -Repo <path>.
 #   pwsh coding-agent-setup/install.ps1 [-Repo C:\path\to\repo]
 #
-# Toggles: -SkipGraphify  -SkipRtk  -SkipConfig  -SkipDox
+# Toggles: -SkipGraphify  -SkipRtk  -SkipConfig  -SkipDox  -SkipLoop
 
 param(
   [string]$Repo = (Get-Location).Path,
   [switch]$SkipGraphify,
   [switch]$SkipRtk,
   [switch]$SkipConfig,
-  [switch]$SkipDox
+  [switch]$SkipDox,
+  [switch]$SkipLoop
 )
 
 $ErrorActionPreference = "Continue"
@@ -32,6 +34,8 @@ function Warn ($m) { Write-Host " warn  $m" -ForegroundColor Red }
 function Have ($c) { [bool](Get-Command $c -ErrorAction SilentlyContinue) }
 
 # Deep-merge $Add into JSON file at $Target; never clobbers existing keys.
+# Lists gain only entries they don't already have, so re-running is a no-op and a
+# second hook lands alongside an existing one instead of being dropped.
 function Merge-Json ($Target, $Add) {
   $cur = @{}
   if (Test-Path $Target) {
@@ -42,6 +46,15 @@ function Merge-Json ($Target, $Add) {
     foreach ($k in $src.Keys) {
       if ($dst.ContainsKey($k) -and ($dst[$k] -is [hashtable]) -and ($src[$k] -is [hashtable])) {
         DeepMerge $dst[$k] $src[$k]
+      } elseif ($dst.ContainsKey($k) -and ($dst[$k] -is [System.Collections.IList]) -and ($src[$k] -is [System.Collections.IList])) {
+        foreach ($item in $src[$k]) {
+          $json = ($item | ConvertTo-Json -Depth 20 -Compress)
+          $seen = $false
+          foreach ($existing in $dst[$k]) {
+            if (($existing | ConvertTo-Json -Depth 20 -Compress) -eq $json) { $seen = $true; break }
+          }
+          if (-not $seen) { $dst[$k] += $item }
+        }
       } elseif (-not $dst.ContainsKey($k)) {
         $dst[$k] = $src[$k]
       }
@@ -148,6 +161,58 @@ else {
   } else { Warn "DOX template missing from kit ($dox)" }
 }
 
+# ===================================================== 5. Loop ==============
+# Planning + dispatch loop: subagent roles, slash commands, owner-gate hook.
+# Copies only what's absent — never overwrites a customised agent. Deliberately
+# does NOT seed a work plan: a board of placeholder rows is worse than no board.
+if ($SkipLoop) { Skip "planning + dispatch loop (-SkipLoop)" }
+elseif (-not (Test-Path (Join-Path $Templates "claude\agents"))) {
+  Warn "loop templates missing from kit"
+} else {
+  New-Item -ItemType Directory -Force ".claude\agents", ".claude\commands", ".claude\hooks" | Out-Null
+  $copied = 0; $kept = 0
+  foreach ($sub in @("agents", "commands")) {
+    Get-ChildItem (Join-Path $Templates "claude\$sub\*.md") | ForEach-Object {
+      $dest = ".claude\$sub\$($_.Name)"
+      if (Test-Path $dest) { $kept++ } else { Copy-Item $_.FullName $dest; $copied++ }
+    }
+  }
+  Ok "dispatch-loop agents + commands ($copied added, $kept left as-is)"
+
+  foreach ($f in @("plan-guard.mjs", "plan-guard.test.mjs")) {
+    if (Test-Path ".claude\hooks\$f") { Skip ".claude/hooks/$f exists" }
+    else { Copy-Item (Join-Path $Templates "claude\hooks\$f") ".claude\hooks\$f"; Ok ".claude/hooks/$f" }
+  }
+
+  if (Test-Path ".claude\plan-guard.config.json") {
+    Skip "plan-guard.config.json exists (your gates left untouched)"
+  } else {
+    Copy-Item (Join-Path $Templates "claude\plan-guard.config.json") ".claude\plan-guard.config.json"
+    Ok "plan-guard.config.json - EDIT IT: add this project's production flags and gates"
+  }
+
+  if (Have node) {
+    node .claude\hooks\plan-guard.test.mjs 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) { Ok "plan-guard self-test passed" }
+    else { Warn "plan-guard self-test FAILED - run: node .claude/hooks/plan-guard.test.mjs" }
+  } else { Warn "node not found - plan-guard cannot run; the loop would be UNGUARDED" }
+
+  $cpi = ".github\copilot-instructions.md"
+  $orch = Join-Path $Templates "copilot\orchestration-instructions.md"
+  if (Test-Path $orch) {
+    New-Item -ItemType Directory -Force ".github" | Out-Null
+    if ((Test-Path $cpi) -and (Select-String -Path $cpi -Pattern "Planning and dispatch loop" -Quiet)) {
+      Skip "copilot-instructions.md already has the dispatch-loop block"
+    } else {
+      "`n" | Add-Content $cpi
+      Get-Content $orch -Raw | Add-Content $cpi
+      Ok "appended dispatch-loop block to $cpi"
+    }
+  }
+
+  Say "next: copy templates/shared/work-plan.md + spec.md into your docs and fill them in by hand (SETUP.md 6.3)"
+}
+
 # ===================================================== Verify ================
 Say "verify:"
 if (Have graphify) {
@@ -155,4 +220,4 @@ if (Have graphify) {
   if (Test-Path "graphify-out\graph.json") { Ok "graphify-out/graph.json present" }
 }
 if (Have rtk) { rtk --version }
-Say "done. Read coding-agent-setup/SETUP.md section 6 and report the numbers."
+Say "done. Read coding-agent-setup/SETUP.md section 7 and report the numbers."

@@ -10,7 +10,7 @@
 
 ## 0. What you are installing and why
 
-Four capabilities, in priority order. Each is independent; install what the host
+Five capabilities, in priority order. Each is independent; install what the host
 supports and skip the rest without failing.
 
 | # | Capability | What it buys you | Works in |
@@ -19,10 +19,16 @@ supports and skip the rest without failing.
 | 2 | **RTK** (Rust Token Killer) | 60–90% fewer tokens on noisy shell output (tests, lint, git, docker). | Claude Code (transparent hook), Copilot (agent prefixes `rtk`) |
 | 3 | **Review + verify skills** | Adversarial code review + end-to-end verification before commit. Catches the expensive class of bug: plausible-but-wrong. | Any agent (methodology + optional slash commands) |
 | 4 | **Project instructions + DOX contract** | A root `AGENTS.md`/`CLAUDE.md` that encodes conventions once, plus a hierarchy of per-directory `AGENTS.md` contracts with a *place-before-building* rule — so the agent stops rediscovering the repo AND puts new features in the right architectural layer instead of wherever a file was open. | Any host (plain markdown) |
+| 5 | **Planning + dispatch loop** | A supervisor-worker loop that takes a goal to merged PRs: decompose → wireframe → spec → audit, then dispatch → build → verify → review. The plan lives in the repo; owner gates are enforced by a hook, not a prompt. | Claude Code (subagents); other hosts run the roles sequentially |
 
 The single biggest token win on a large codebase is **#1 (Graphify)** — a
 grep/read exploration is dozens of tool calls; a `graphify query` is one. #2 is
 the cheap, immediate win. Do both first.
+
+**#5 is different in kind** from the others: it is not a token optimization, it
+is how a *project* gets executed rather than a single change. Install it only
+once #1–#4 are working — it depends on all of them (its agents query the graph,
+run commands through the compressor, and place work using the DOX contract).
 
 ---
 
@@ -246,7 +252,82 @@ every session.
 
 ---
 
-## 6. Verify (do this — report real numbers)
+## 6. Planning + dispatch loop (capability #5)
+
+The methodology is [`ORCHESTRATION.md`](ORCHESTRATION.md) — read it before
+installing this, especially §5 (what stays human) and §8 (adoption order).
+The installer copies the pieces; **it deliberately does not seed a work plan**,
+because a board full of placeholder rows is worse than none.
+
+### 6.1 What gets installed
+
+```
+.claude/agents/           plan-architect · ui-wireframer · spec-writer
+                          spec-auditor · ws-implementer · ws-verifier · diff-reviewer
+.claude/commands/         plan-feature.md · next-ticket.md
+.claude/hooks/            plan-guard.mjs + plan-guard.test.mjs
+.claude/plan-guard.config.json
+```
+
+Four of the seven agents write nothing. That ratio is the point: in an unattended
+loop the expensive failure is confident wrong work, and the defence is
+independent readers who did not write the code.
+
+### 6.2 Configure the gates — do this before running anything
+
+`.claude/plan-guard.config.json` declares what agents may never do. The shipped
+defaults cover the universally dangerous (force-push, deploy, `terraform apply`,
+`ssh`, `DROP TABLE`, `npm publish`, `.env`). **Add your project's own** — above
+all its production feature flags; the `prod-flag-flip` entry ships as an obvious
+placeholder to be replaced.
+
+Then run the self-test, and add a case for every gate you added:
+
+```bash
+node .claude/hooks/plan-guard.test.mjs   # expect: all N cases passed
+```
+
+An untested regex is a guess. Over-matching blocks ordinary work until someone
+disables the guard entirely; under-matching means the boundary you think you have
+does not exist.
+
+### 6.3 Write the board and one spec by hand
+
+Copy `templates/shared/work-plan.md` to where the project keeps planning docs,
+and `templates/shared/spec.md` for the first workstream. Fill them in yourself.
+
+This step is not ceremony. **If you cannot write acceptance criteria that a
+command could check, no amount of agent machinery will help** — and you have
+learned that for the price of an afternoon rather than a week. Keep the work
+plan's owner-gate section in sync with the guard config: prose is the
+explanation, config is the boundary.
+
+### 6.4 Run the auditor before you run anything else
+
+```
+/next-ticket <your first ticket>
+```
+
+The first thing it does is dispatch `spec-auditor`, whose NO-GO list *is* your
+remediation backlog — and it is usually longer than expected. That output is
+valuable on its own, before a single line is built.
+
+Watch cycle one interactively; do not walk away from it. Once the loop is landing
+PRs you would have merged anyway, the same setup runs headless on a schedule —
+same agents, same hooks, no window open.
+
+### 6.5 Hosts without subagents
+
+Copilot Chat, Cursor, and others have no subagent primitive. Append
+`templates/copilot/orchestration-instructions.md` to the project instructions and
+run the roles sequentially. The one thing that must survive the degradation:
+**never verify your own work in the same session that wrote it** — start a fresh
+session for the verify and review passes and give it only the branch and the
+spec. That restores most of the independence a separate agent provides.
+
+---
+
+## 7. Verify (do this — report real numbers)
 
 ```bash
 # Graphify answers a real question about THIS repo in one call:
@@ -255,16 +336,21 @@ graphify explain "<a real symbol in this repo>"  # expect source line + caller/c
 
 # RTK actually reduces tokens (run on a real diff in this repo):
 rtk gain                                          # after a few rtk commands, shows % saved
+
+# The owner gates actually block (only if you installed capability #5):
+node .claude/hooks/plan-guard.test.mjs            # expect: all N cases passed
 ```
 
 Report back: the node/edge counts from the graph build (printed by
 `graphify extract` / `/graphify .`, or visible in `graphify-out/GRAPH_REPORT.md`),
-and the RTK reduction % on a real command. If either is zero or errors, debug it
-before declaring setup complete — a tool installed but unused delivers nothing.
+the RTK reduction % on a real command, and the guard's pass count. If any is zero
+or errors, debug it before declaring setup complete — a tool installed but unused
+delivers nothing, and a guard that does not block is worse than none because it
+is believed.
 
 ---
 
-## 7. Host support matrix (what to skip where)
+## 8. Host support matrix (what to skip where)
 
 | Capability | Claude Code | VS Code Copilot Chat | Copilot CLI | Cursor / other MCP host |
 |---|---|---|---|---|
@@ -275,6 +361,10 @@ before declaring setup complete — a tool installed but unused delivers nothing
 | Review / verify | ✅ skills | ✅ methodology | ✅ | ✅ methodology |
 | Project instructions | ✅ CLAUDE.md | ✅ copilot-instructions.md | ✅ | host-specific |
 | DOX architecture contract | ✅ AGENTS.md | ✅ AGENTS.md | ✅ | ✅ (plain markdown) |
+| Dispatch loop — plan + specs | ✅ templates | ✅ templates | ✅ | ✅ (plain markdown) |
+| Dispatch loop — subagent roles | ✅ `.claude/agents/` | ⚠️ sequential roles, fresh session per role | ⚠️ sequential | ⚠️ sequential |
+| Dispatch loop — slash commands | ✅ `.claude/commands/` | ⚠️ paste the role prompt | ⚠️ | ⚠️ |
+| Owner-gate hook (`plan-guard`) | ✅ PreToolUse | ❌ (state gates in instructions; unenforced) | ✅ | depends on hook support |
 
 If a capability is unsupported, skip it and note it in your setup summary. Do not
 fail the whole setup because one host lacks one feature.

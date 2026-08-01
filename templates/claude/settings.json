@@ -1,5 +1,5 @@
 {
-  "description": "RTK (Rust Token Killer) PreToolUse hook compresses noisy shell output (pytest/ruff/git/docker/...) before it reaches the agent context. Scoped by an allowlist in .claude/hooks/rtk-bash.sh; skips `uv run` and file reads. Requires `rtk` on PATH; no-ops silently if absent.",
+  "description": "RTK (Rust Token Killer) PreToolUse hook compresses noisy shell output (pytest/ruff/git/docker/...) before it reaches the agent context. Scoped by an allowlist in .claude/hooks/rtk-bash.sh; skips `uv run` and file reads. Requires `rtk` on PATH; no-ops silently if absent. plan-guard.mjs enforces the owner gates declared in .claude/plan-guard.config.json — the boundary that makes an unattended dispatch loop safe; keep it in sync with the work plan's owner-gate section and test it with `node .claude/hooks/plan-guard.test.mjs`.",
   "hooks": {
     "PreToolUse": [
       {
@@ -10,6 +10,17 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/rtk-bash.sh\"",
             "timeout": 10,
             "statusMessage": "rtk: compressing output"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/plan-guard.mjs\"",
+            "timeout": 10,
+            "statusMessage": "plan-guard: checking owner gates"
           }
         ]
       }
