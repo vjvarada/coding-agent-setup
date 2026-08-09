@@ -311,6 +311,36 @@ fit, what stays human, and the cost model — is in [`ORCHESTRATION.md`](ORCHEST
 
 ---
 
+## Principle 11 — Report bottom-line-up-front (attacks: *buried conclusions*)
+
+Agent output is read by two audiences with the same bias: humans skim, and
+models weight early context most. Both are best served by **BLUF** (Bottom Line
+Up Front) — the conclusion, recommendation, or blocker in the first sentence;
+context and evidence after, never before.
+
+Concretely, in every response, status report, review finding, PR description,
+and handover note:
+
+- **Answer first.** The first sentence is what the reader would ask for as the
+  TLDR: "Deployed and verified", "Blocked: the migration lock is held",
+  "Recommendation: reuse the existing seam".
+- **Cut padding.** No pleasantries, no restating the question, no "I'll now…"
+  narration. What survives the cut is written in full sentences — brevity comes
+  from selecting what to say, not compressing how it's said.
+- **Structure for skimming.** A reader who stops after the first paragraph
+  still leaves with the correct takeaway.
+
+The same shape pays twice in *durable* prose. Specs, plan rows, and AGENTS.md
+contracts written answer-first are cheaper for the next agent to consume:
+the load-bearing fact lands inside the first lines the model reads, instead of
+after three paragraphs of build-up it may truncate or under-weight.
+
+The kit encodes this in the DOX root template (`templates/shared/AGENTS.md`
+§Communication), so every repo it installs into gets the rule as part of the
+always-loaded contract.
+
+---
+
 ## Quick reference — the loop
 
 1. **Orient** — read the project instructions and the DOX contract chain for the
@@ -339,7 +369,7 @@ build → verify → review → PR, with the plan itself living in the repo. See
 
 ## Going further
 
-These ten principles are the core. For the harder practices that keep a codebase
+These eleven principles are the core. For the harder practices that keep a codebase
 safe and cheap for agents *over time* — tool risk annotations, fail-closed
 permissions, golden trajectory evals, prompt-cache discipline, auto-compaction
 thresholds, tool naming, and complexity/correctness CI gates — see

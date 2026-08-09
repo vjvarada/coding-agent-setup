@@ -4,7 +4,7 @@
 > `SETUP.md §5`). It makes a codebase legible to coding agents: a small,
 > always-loaded root contract that points to per-directory contracts read on
 > demand. **Fill in the `<...>` placeholders below for this repo, then delete
-> this quote block.** Keep the framework sections (Core Contract → Style) intact.
+> this quote block.** Keep the framework sections (Core Contract → Communication) intact.
 
 - DOX is a hierarchy of AGENTS.md files that act as binding work contracts.
 - Agents must follow DOX instructions across any edit in the covered subtree.
@@ -73,6 +73,26 @@ Remove stale or contradictory text immediately.
 - Prefer direct bullets with explicit names.
 - Do not duplicate rules across many files unless each scope needs a local version.
 - Delete stale notes instead of explaining history.
+
+## Communication (BLUF)
+
+Every response to a human — answers, status reports, review findings, PR
+descriptions, handover notes — leads with the bottom line up front:
+
+1. **Answer first.** The first sentence states the conclusion, recommendation,
+   result, or blocker — what the reader would ask for as the TLDR. Background,
+   reasoning, and evidence follow, never precede.
+2. **Cut padding.** No pleasantries, no restating the question, no "I'll now…"
+   preamble. Use precise technical terms, but no jargon that a skim can't carry.
+3. **Structure for skimming.** After the up-front answer, short paragraphs and
+   bolded key facts; lists only for genuinely enumerable items. A reader who
+   stops after the first paragraph still leaves with the correct takeaway.
+4. **Outcomes before narrative.** "Deployed and verified" / "Blocked: X" comes
+   before the story of how.
+
+This also applies to durable prose (specs, plan rows, AGENTS.md updates):
+answer-first text skims faster for humans and retrieves better for models,
+which weight early context most.
 
 ---
 
