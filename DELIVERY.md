@@ -363,6 +363,8 @@ The guard blocks these four, and no grant opens them:
 3. **Write the grants file.** Only the owner writes a grant. When the owner must add a line, open the file at that line for them and give the exact text.
 4. **Destroy or restore infrastructure.** The server, the DNS zone, the domain.
 
+The guard reads the text of each command. It stops an agent that makes a mistake. It cannot stop an agent that hides the act: a file name built at run time, a glob, or a git alias gets past a text check. So turn on branch protection for `main` on the git host as well. That is the real fence for item 2, and the guard is the early warning.
+
 ### Three rules that replace the refusals
 
 The old gates bought care as well as delay. Keep the care, drop the delay.
