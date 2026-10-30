@@ -7,12 +7,13 @@
 #   3. Config    — RTK hook/nudge + project instructions
 #   4. DOX       — seed a root AGENTS.md architecture contract (place-before-building)
 #   5. Loop      — supervisor-worker planning + dispatch agents, commands, owner-gate hook
+#   6. Delivery  — dev_up.sh (one-command local stack), premerge.sh, worktree.sh, task board
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites,
 # no-ops anything already installed. Run from the TARGET repo root, or pass it:
 #   bash coding-agent-setup/install.sh [/path/to/repo]
 #
-# Env toggles: SKIP_GRAPHIFY=1  SKIP_RTK=1  SKIP_CONFIG=1  SKIP_DOX=1  SKIP_LOOP=1
+# Env toggles: SKIP_GRAPHIFY=1  SKIP_RTK=1  SKIP_CONFIG=1  SKIP_DOX=1  SKIP_LOOP=1  SKIP_DELIVERY=1
 
 set -uo pipefail
 
@@ -232,6 +233,54 @@ else
   fi
 
   say "next: copy templates/shared/work-plan.md + spec.md into your docs and fill them in by hand (SETUP.md §6.3)"
+fi
+
+# ============================================================ 6. DELIVERY ===
+# Delivery scripts: a one-command local stack, a pre-merge trial merge, and safe
+# worktrees. Copies files only if absent. dev_up.sh needs a dev_up.config that
+# the project writes (the example is copied alongside). The task board copy is
+# the file the next-ticket and work-on-task commands point at.
+# Does NOT create .claude/OWNER_GRANTS.md: only the owner writes that file.
+if [ "${SKIP_DELIVERY:-0}" = "1" ]; then
+  skip "delivery scripts (SKIP_DELIVERY=1)"
+elif [ ! -d "$TEMPLATES/scripts" ]; then
+  warn "delivery templates missing from kit ($TEMPLATES/scripts)"
+else
+  mkdir -p scripts
+  copied=0; kept=0
+  for f in "$TEMPLATES"/scripts/*.sh "$TEMPLATES"/scripts/dev_up.config.example; do
+    dest="scripts/$(basename "$f")"
+    if [ -f "$dest" ]; then kept=$((kept+1)); else cp "$f" "$dest"; copied=$((copied+1)); fi
+    case "$dest" in *.sh) chmod +x "$dest" ;; esac
+  done
+  ok "delivery scripts ($copied added, $kept left as-is)"
+
+  if [ -f .gitignore ] && grep -qxF '.dev_up/' .gitignore; then
+    skip ".gitignore already lists .dev_up/"
+  else
+    [ -f .gitignore ] && [ -n "$(tail -c1 .gitignore)" ] && printf '
+' >> .gitignore
+    printf '.dev_up/
+' >> .gitignore
+    ok "added .dev_up/ to .gitignore"
+  fi
+
+  if [ -f .claude/task-board.md ]; then
+    skip ".claude/task-board.md exists"
+  elif [ -f "$TEMPLATES/shared/task-board.md" ]; then
+    mkdir -p .claude
+    cp "$TEMPLATES/shared/task-board.md" .claude/task-board.md
+    ok ".claude/task-board.md (point the dispatch commands at your task system)"
+  else
+    warn "task-board template missing from kit ($TEMPLATES/shared/task-board.md)"
+  fi
+
+  if bash scripts/premerge.test.sh >/dev/null 2>&1; then
+    ok "premerge self-test passed"
+  else
+    warn "premerge self-test FAILED - run: bash scripts/premerge.test.sh"
+  fi
+  say "next: cp scripts/dev_up.config.example scripts/dev_up.config, then edit the values marked CHANGE"
 fi
 
 # ============================================================ Verify =========

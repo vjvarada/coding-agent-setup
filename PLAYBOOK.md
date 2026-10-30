@@ -341,6 +341,76 @@ always-loaded contract.
 
 ---
 
+## Principle 12 — Run it before you push (attacks: *bugs found after the push*)
+
+A bug found on CI or staging costs a push, a wait, a re-read of context and a
+repair round. A bug found in the same session costs a command. So the agent that
+builds a slice also runs the changed behaviour on its own machine, in its own
+worktree, against its own seeded database, before it reports done. The verifier
+runs it again and quotes the evidence.
+
+That only works if starting the app is **one command**. A six-step manual setup
+means nobody does it. The stack must also be safe by default: a clean
+environment, no `.env`, the production database role, two fictional tenants so a
+leak shows, and every outbound switch held off.
+
+*Lesson:* on one platform, the migration ladder took 515 s from a Windows shell
+and 38 s inside the database container. Where the work runs decides whether the
+habit survives. See [`DELIVERY.md`](DELIVERY.md) §2.
+
+---
+
+## Principle 13 — Test the merge you will land (attacks: *green alone, red together*)
+
+CI tests your PR merged with `main` as it was when the run started. Without a
+merge queue, `main` can move before you merge. Two PRs then take the same
+migration number or the same id, or each passes alone and fails together.
+
+Run one script right before the merge: it merges today's `main` into the
+worktree without a commit, runs the collision checks and the affected tests, then
+aborts. A pass tests the tree that lands.
+
+*Lesson:* the platform hit three migration-number collisions in two weeks and two
+green-alone, red-together PRs in one day. See [`DELIVERY.md`](DELIVERY.md) §7.
+
+---
+
+## Principle 14 — Spend review by risk, not uniformly (attacks: *review as the bottleneck*)
+
+AI raises the number of PRs and the size of each. Review time grows with both.
+You cannot review everything at the same depth, so decide the depth up front.
+Give each slice a tier. A slice that touches tenancy, auth, money, secrets, a
+migration or the deploy path gets the full loop and the strongest model. Other
+product code gets a verifier. Tooling and docs get a verifier and nothing more.
+
+Apply the same logic to fences. Split them into **safety** fences, which guard
+production and customers, and **process** fences, which guard naming and docs.
+Let process fences warn while a feature is built, and block in one hardening PR.
+
+*Lesson:* of 70 red CI runs in a week, 29 came from process fences and 9 from
+real bugs. Each cost about 30 minutes. See [`DELIVERY.md`](DELIVERY.md) §3 to §5.
+
+---
+
+## Principle 15 — Staging is a smoke test, and the release train is the human checkpoint (attacks: *merge equals production*)
+
+If every merge reaches customers, a confident wrong change reaches them in
+minutes. Separate **deploy** from **release**. Every merge goes to staging, a
+reduced anonymised copy of production with all outbound switches off. Production
+moves on a clock, once a day, to the tip of a green `main`. A hold switch stops
+one night's release.
+
+Staging is not a second test suite. The local run covers behaviour. Staging
+covers what the PC cannot: the deploy path, real OAuth, real webhooks, and a
+migration on production-shaped data. Verify every deploy by evidence (the served
+SHA, the migration ledger, the log line), never by a green job.
+
+This is the same idea as Principle 10, moved later: a dated owner grant lets
+agents merge and deploy inside a window, and the daily train still gives the
+owner a checkpoint. See [`DELIVERY.md`](DELIVERY.md) §8, §9 and §11.
+
+---
+
 ## Quick reference — the loop
 
 1. **Orient** — read the project instructions and the DOX contract chain for the
@@ -353,23 +423,29 @@ always-loaded contract.
    never through the package runner (`uv run rtk` is broken).
 5. **Review** — adversarial pass; refute findings, keep survivors.
 6. **Verify** — drive the real flow, observe behavior, not just the test result.
-7. **Record** — if you learned something that makes the next change faster, push
+   Run it on the local stack first (Principle 12), then spend review by tier
+   (Principle 14).
+7. **Merge** *(delivery)* — run the premerge check against today's `main`
+   (Principle 13), merge, smoke-test on staging, and confirm the served SHA
+   (Principle 15). Production follows on the release train.
+8. **Record** — if you learned something that makes the next change faster, push
    it back to this kit (see `CONTRIBUTING.md`). Update the owning `AGENTS.md` if the
    change moved a boundary (DOX "Update After Editing"). If the work came off a
    plan, write back what shipped and what remains, for a reader with no memory of
    this session (Principle 9).
 
-Steps 1–7 are one agent on one change. When the work is a *project* rather than a
+Steps 1–8 are one agent on one change. When the work is a *project* rather than a
 change — a queue of features, planned and dispatched over days — that loop becomes
 the inner half of a larger one: plan → wireframe → spec → audit, then dispatch →
 build → verify → review → PR, with the plan itself living in the repo. See
-[`ORCHESTRATION.md`](ORCHESTRATION.md).
+[`ORCHESTRATION.md`](ORCHESTRATION.md). The path from a built slice to production
+is in [`DELIVERY.md`](DELIVERY.md).
 
 ---
 
 ## Going further
 
-These eleven principles are the core. For the harder practices that keep a codebase
+These fifteen principles are the core. For the harder practices that keep a codebase
 safe and cheap for agents *over time* — tool risk annotations, fail-closed
 permissions, golden trajectory evals, prompt-cache discipline, auto-compaction
 thresholds, tool naming, and complexity/correctness CI gates — see

@@ -10,7 +10,7 @@
 
 ## 0. What you are installing and why
 
-Five capabilities, in priority order. Each is independent; install what the host
+Six capabilities, in priority order. Each is independent; install what the host
 supports and skip the rest without failing.
 
 | # | Capability | What it buys you | Works in |
@@ -20,6 +20,7 @@ supports and skip the rest without failing.
 | 3 | **Review + verify skills** | Adversarial code review + end-to-end verification before commit. Catches the expensive class of bug: plausible-but-wrong. | Any agent (methodology + optional slash commands) |
 | 4 | **Project instructions + DOX contract** | A root `AGENTS.md`/`CLAUDE.md` that encodes conventions once, plus a hierarchy of per-directory `AGENTS.md` contracts with a *place-before-building* rule — so the agent stops rediscovering the repo AND puts new features in the right architectural layer instead of wherever a file was open. | Any host (plain markdown) |
 | 5 | **Planning + dispatch loop** | A supervisor-worker loop that takes a goal to merged PRs: decompose → wireframe → spec → audit, then dispatch → build → verify → review. The plan lives in the repo; owner gates are enforced by a hook, not a prompt. | Claude Code (subagents); other hosts run the roles sequentially |
+| 6 | **Delivery** (local-first run, premerge, staging and release train, owner grants, task board) | The path from "slice built" to "in production". A one-command local stack per worktree, a merge test against today's `main`, risk-tiered review, and an optional dated autonomy window. Cuts red CI runs and post-push repair rounds. | Any host for the scripts. Hooks and slash commands need Claude Code |
 
 The single biggest token win on a large codebase is **#1 (Graphify)** — a
 grep/read exploration is dozens of tool calls; a `graphify query` is one. #2 is
@@ -327,6 +328,77 @@ spec. That restores most of the independence a separate agent provides.
 
 ---
 
+## 6b. Delivery (capability #6)
+
+The methodology is [`DELIVERY.md`](DELIVERY.md). Install it after #5 works, because
+it extends the dispatch loop. Skip it with `SKIP_DELIVERY=1` when you run the
+installer.
+
+### 6b.1 Install
+
+The installer copies the scripts into `scripts/` and the templates into place. To
+do it by hand:
+
+```
+scripts/dev_up.sh  dev_up.config.example   one-command local stack per worktree
+scripts/premerge.sh  premerge.test.sh      test the merge with today's main
+scripts/worktree.sh                        one worktree per session
+.claude/commands/work-on-task.md           the task-board protocol as a command
+docs/ (or repo root)  task-board.md  HANDOFF.md  fences.json
+```
+
+Copy from `templates/scripts/`, `templates/shared/` and `templates/claude/`. Mark
+the scripts executable. The installer is idempotent and never overwrites.
+
+### 6b.2 Configure the local stack
+
+Copy `scripts/dev_up.config.example` to `scripts/dev_up.config` and fill it in:
+how to start your app, your migration command, your seed command, the database
+role production uses, and the held-switch pattern for outbound features. Seed two
+fictional tenants. The stack must start with one command and hold outbound off.
+
+### 6b.3 Configure the premerge check
+
+Write `.premerge-fences` in the repo root. List your collision checks, one per
+line: migration numbers, unique ids in any registry file, and any test that
+passes alone and fails together. Then run `bash scripts/premerge.test.sh`. Sort
+your fences into `safety` and `process` in `fences.json`. When unsure, choose
+`safety`.
+
+### 6b.4 Optional: the owner-grant window
+
+Only the owner writes `.claude/OWNER_GRANTS.md`. Never write it yourself. When the
+owner wants a window, tell them the exact line and open the file at that line:
+
+```
+ALLOW-UNTIL 2026-11-30 deploy — dev phase
+```
+
+`plan-guard.mjs` reads the file. Force-push, commits on `main`, writes to the
+grants file and infrastructure destruction stay refused. Do this only if you
+have staging and a release train (`DELIVERY.md` §8, §11).
+
+### 6b.5 Connect a task board
+
+Connect an MCP task board so every change has a task, one session holds it, and
+the board is the state. For Metorite's board:
+
+```bash
+claude mcp add --transport http metorite https://mcp.metorite.com/mcp
+```
+
+Any board with the same verbs works: list my work, claim, heartbeat, set status,
+comment, release. The protocol is `templates/shared/task-board.md`. The command is
+`/work-on-task`.
+
+### 6b.6 Hosts
+
+The scripts are plain bash and run on any host. The hook, the agents and the
+slash commands need Claude Code. On other hosts, follow `DELIVERY.md` by hand and
+keep the verifier in a fresh session.
+
+---
+
 ## 7. Verify (do this — report real numbers)
 
 ```bash
@@ -339,11 +411,17 @@ rtk gain                                          # after a few rtk commands, sh
 
 # The owner gates actually block (only if you installed capability #5):
 node .claude/hooks/plan-guard.test.mjs            # expect: all N cases passed
+
+# Delivery (only if you installed capability #6):
+bash scripts/premerge.test.sh                     # expect: all cases passed
+bash scripts/dev_up.sh --print-env                # expect: every outbound switch shows OFF
+bash scripts/dev_up.sh --check                    # expect: health OK, tenant-isolation check passes
 ```
 
 Report back: the node/edge counts from the graph build (printed by
 `graphify extract` / `/graphify .`, or visible in `graphify-out/GRAPH_REPORT.md`),
-the RTK reduction % on a real command, and the guard's pass count. If any is zero
+the RTK reduction % on a real command, the guard's pass count, and (for #6) the
+premerge test result and the `dev_up.sh --check` output. If any is zero
 or errors, debug it before declaring setup complete — a tool installed but unused
 delivers nothing, and a guard that does not block is worse than none because it
 is believed.
@@ -365,6 +443,8 @@ is believed.
 | Dispatch loop — subagent roles | ✅ `.claude/agents/` | ⚠️ sequential roles, fresh session per role | ⚠️ sequential | ⚠️ sequential |
 | Dispatch loop — slash commands | ✅ `.claude/commands/` | ⚠️ paste the role prompt | ⚠️ | ⚠️ |
 | Owner-gate hook (`plan-guard`) | ✅ PreToolUse | ❌ (state gates in instructions; unenforced) | ✅ | depends on hook support |
+| Delivery scripts (`dev_up`, `premerge`, `worktree`) | ✅ bash | ✅ bash | ✅ bash | ✅ bash |
+| Owner-grant window + task-board command | ✅ hook + `.claude/commands/` | ❌ (follow `DELIVERY.md` §11-12 by hand) | ⚠️ | depends on hook support |
 
 If a capability is unsupported, skip it and note it in your setup summary. Do not
 fail the whole setup because one host lacks one feature.

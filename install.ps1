@@ -6,12 +6,13 @@
 #   3. Config    — RTK hook/nudge + project instructions
 #   4. DOX       — seed a root AGENTS.md architecture contract (place-before-building)
 #   5. Loop      — supervisor-worker planning + dispatch agents, commands, owner-gate hook
+#   6. Delivery  — dev_up.sh (one-command local stack), premerge.sh, worktree.sh, task board
 #
 # Idempotent and non-destructive: merges into existing config, never overwrites.
 # Run from the target repo root, or pass -Repo <path>.
 #   pwsh coding-agent-setup/install.ps1 [-Repo C:\path\to\repo]
 #
-# Toggles: -SkipGraphify  -SkipRtk  -SkipConfig  -SkipDox  -SkipLoop
+# Toggles: -SkipGraphify  -SkipRtk  -SkipConfig  -SkipDox  -SkipLoop  -SkipDelivery
 
 param(
   [string]$Repo = (Get-Location).Path,
@@ -19,7 +20,8 @@ param(
   [switch]$SkipRtk,
   [switch]$SkipConfig,
   [switch]$SkipDox,
-  [switch]$SkipLoop
+  [switch]$SkipLoop,
+  [switch]$SkipDelivery
 )
 
 $ErrorActionPreference = "Continue"
@@ -211,6 +213,47 @@ elseif (-not (Test-Path (Join-Path $Templates "claude\agents"))) {
   }
 
   Say "next: copy templates/shared/work-plan.md + spec.md into your docs and fill them in by hand (SETUP.md 6.3)"
+}
+
+# ===================================================== 6. Delivery ==========
+# Delivery scripts: local stack, pre-merge trial merge, safe worktrees. Copies
+# only what is absent. Does NOT create .claude/OWNER_GRANTS.md (owner-only).
+if ($SkipDelivery) { Skip "delivery scripts (-SkipDelivery)" }
+elseif (-not (Test-Path (Join-Path $Templates "scripts"))) {
+  Warn "delivery templates missing from kit"
+} else {
+  New-Item -ItemType Directory -Force "scripts" | Out-Null
+  $copied = 0; $kept = 0
+  $srcs = @(Get-ChildItem (Join-Path $Templates "scripts\*.sh")) + @(Get-Item (Join-Path $Templates "scripts\dev_up.config.example"))
+  foreach ($f in $srcs) {
+    $dest = "scripts\$($f.Name)"
+    if (Test-Path $dest) { $kept++ } else { Copy-Item $f.FullName $dest; $copied++ }
+  }
+  Ok "delivery scripts ($copied added, $kept left as-is)"
+
+  if ((Test-Path ".gitignore") -and (Select-String -Path ".gitignore" -Pattern "^\.dev_up/$" -Quiet)) {
+    Skip ".gitignore already lists .dev_up/"
+  } else {
+    if ((Test-Path ".gitignore") -and -not ((Get-Content ".gitignore" -Raw) -match "
+$")) { Add-Content ".gitignore" "" }
+    Add-Content ".gitignore" ".dev_up/"
+    Ok "added .dev_up/ to .gitignore"
+  }
+
+  $board = Join-Path $Templates "shared/task-board.md"
+  if (Test-Path ".claude/task-board.md") { Skip ".claude/task-board.md exists" }
+  elseif (Test-Path $board) {
+    New-Item -ItemType Directory -Force ".claude" | Out-Null
+    Copy-Item $board ".claude/task-board.md"
+    Ok ".claude/task-board.md (point the dispatch commands at your task system)"
+  } else { Warn "task-board template missing from kit ($board)" }
+
+  if (Have bash) {
+    bash scripts/premerge.test.sh 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) { Ok "premerge self-test passed" }
+    else { Warn "premerge self-test FAILED - run: bash scripts/premerge.test.sh" }
+  } else { Warn "bash not found - the delivery scripts need Git Bash or WSL" }
+  Say "next: copy scripts/dev_up.config.example to scripts/dev_up.config and edit the values marked CHANGE"
 }
 
 # ===================================================== Verify ================
