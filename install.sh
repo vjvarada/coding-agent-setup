@@ -275,6 +275,18 @@ else
     warn "task-board template missing from kit ($TEMPLATES/shared/task-board.md)"
   fi
 
+  # HANDOFF.md and fences.json sit at the repo root: next-ticket.md names them.
+  for rootfile in HANDOFF.md fences.json; do
+    if [ -f "$rootfile" ]; then
+      skip "$rootfile exists"
+    elif [ -f "$TEMPLATES/shared/$rootfile" ]; then
+      cp "$TEMPLATES/shared/$rootfile" "$rootfile"
+      ok "$rootfile (repo root)"
+    else
+      warn "$rootfile template missing from kit ($TEMPLATES/shared/$rootfile)"
+    fi
+  done
+
   if bash scripts/premerge.test.sh >/dev/null 2>&1; then
     ok "premerge self-test passed"
   else

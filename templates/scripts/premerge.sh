@@ -13,10 +13,12 @@
 #
 # WHAT. When the branch is behind the base, this script:
 #   1. refuses a new migration numbered at or below the base's highest;
-#   2. merges the base into the worktree WITHOUT a commit;
+#   2. merges the base into a DETACHED head as a real trial commit (signing is
+#      off for it, and it is never pushed: no ref moves);
 #   3. runs your collision fences on that result;
 #   4. when both sides changed the same files, runs your affected-tests command;
-#   5. aborts the merge, so the worktree is as it was.
+#   5. goes back to your branch (forced, so a tracked file that a test rewrote
+#      is reset, with a warning), so the worktree is as it was.
 # A squash merge lands the same tree that step 2 built. So a pass tests what
 # lands, with no second CI run.
 #
@@ -39,7 +41,13 @@
 #                            lines (pytest -rfE does) so a failure can be re-run.
 #   PREMERGE_RERUN_CMD       re-runs the failed ids on the branch alone. The ids
 #                            arrive as arguments. Only a test that fails merged
-#                            and passes alone blocks. (default: pytest -q -rfE)
+#                            and passes alone blocks.
+#                            (default: python3 -m pytest -q -rfE, else python)
+#                            EXIT CONTRACT: exit 0 or 1 are RESULTS (0: all pass,
+#                            1: some failed, and `FAILED <id>` lines name them).
+#                            Any other exit (2-5, 127 for a missing command...)
+#                            means the re-run did not run. That is a FAIL with the
+#                            log tail, never the "pass alone" verdict.
 #   PREMERGE_SKIP_FETCH=1    do not fetch first (tests use this).
 # ════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -100,19 +108,34 @@ logs="$(mktemp -d)"
 # SHA with `git rev-parse HEAD`. The trap aborts any merge and goes back to the
 # branch on every exit. The trial commit is left unreferenced. No ref moves.
 branch="$(git symbolic-ref -q --short HEAD)" || fail "HEAD is detached. Check out the PR branch first."
+# The script refused to start with uncommitted changes, so a tracked file that
+# is dirty here was changed by a fence or a test. Warn, then force the return:
+# a plain checkout would refuse and leave a detached head after a PASS line.
 back() {
-  git rev-parse -q --verify MERGE_HEAD >/dev/null && git merge --abort
-  [ "$(git symbolic-ref -q --short HEAD || true)" = "$branch" ] || git checkout -q "$branch"
+  local dirty
+  if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then git merge --abort || true; fi
+  dirty="$(git status --porcelain --untracked-files=no 2>/dev/null || true)"
+  if [ -n "$dirty" ]; then
+    printf 'premerge: WARNING. a test changed tracked files (reset now):\n' >&2
+    printf '%s\n' "$dirty" | sed 's/^/  /' >&2
+  fi
+  if [ -n "$dirty" ] || [ "$(git symbolic-ref -q --short HEAD || true)" != "$branch" ]; then
+    git checkout -q -f "$branch" || true
+  fi
 }
-trap 'back; rm -rf "$logs"; true' EXIT
+# Keep the exit code of the verdict: the cleanup must never change it.
+trap 'rc=$?; back || true; rm -rf "$logs"; exit $rc' EXIT
 git checkout -q --detach
-if ! git merge --no-ff --no-edit -q "$BASE" > "$logs/merge.log" 2>&1; then
+# The trial commit is never pushed, so it must not need a signer.
+if ! git -c commit.gpgsign=false merge --no-ff --no-edit -q "$BASE" > "$logs/merge.log" 2>&1; then
   conflicts="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
+  sed 's/^/  /' "$logs/merge.log" >&2
   if [ -z "$conflicts" ]; then
-    # No conflicted path: git refused before it merged, most often because an
-    # untracked file here has the name of a file that the base adds. Show git's words.
-    sed 's/^/  /' "$logs/merge.log" >&2
-    fail "git refused the trial merge (above). Move the untracked files it names, then run this again."
+    # No conflicted path: git refused before it merged.
+    if grep -qi 'untracked working tree files' "$logs/merge.log"; then
+      fail "git refused the trial merge (above): an untracked file here has the name of a file that the base adds. Move the untracked files it names, then run this again."
+    fi
+    fail "git refused the trial merge (git's words above)."
   fi
   fail "merging $BASE conflicts in: $conflicts. Merge it, resolve, push, and wait for CI."
 fi
@@ -137,13 +160,13 @@ fi
 # other line runs as a shell command. A one-word path that is missing is skipped:
 # the base may not have the file yet.
 run_fence() {
-  local f="$1" py=python
+  local f="$1" py=python3
   case "$f" in
     *' '*) bash -c "$f"; return ;;
   esac
   [ -f "$f" ] || { case "$f" in *.*) return 0 ;; *) bash -c "$f"; return ;; esac; }
   case "$f" in
-    *.py) command -v python >/dev/null 2>&1 || py=python3; "$py" -m pytest -q -p no:cacheprovider "$f" ;;
+    *.py) command -v python3 >/dev/null 2>&1 || py=python; "$py" -m pytest -q -p no:cacheprovider "$f" ;;
     *.js|*.mjs|*.cjs) node "$f" ;;
     *) bash "$f" ;;
   esac
@@ -164,7 +187,8 @@ done
 # on the branch alone (green alone, red together). A test that fails both ways
 # is this machine or an older red. On one Windows PC six tests failed locally
 # and passed in CI, so without this re-run the step always failed.
-RERUN_CMD="${PREMERGE_RERUN_CMD:-python -m pytest -q -p no:cacheprovider --continue-on-collection-errors -rfE}"
+PYBIN=python3; command -v python3 >/dev/null 2>&1 || PYBIN=python
+RERUN_CMD="${PREMERGE_RERUN_CMD:-$PYBIN -m pytest -q -p no:cacheprovider --continue-on-collection-errors -rfE}"
 # Ids at the function level: a parameter such as [a b] holds a space, and a cut
 # id selects nothing on the re-run.
 failed_ids() { { grep -E '^(FAILED|ERROR) ' "$1" || true; } | awk '{print $2}' | sed 's/\[.*//' | sort -u; }
@@ -181,7 +205,15 @@ if [ -n "$overlap" ]; then
       fi
       back
       # shellcheck disable=SC2086
-      bash -c "$RERUN_CMD \"\$@\"" _ $merged_fail > "$logs/rerun.log" 2>&1 || true
+      rerun_rc=0
+      bash -c "$RERUN_CMD \"\$@\"" _ $merged_fail > "$logs/rerun.log" 2>&1 || rerun_rc=$?
+      # Exit 0 or 1 are results. Anything else: the re-run never ran, so it
+      # proves nothing about "passes alone".
+      case "$rerun_rc" in
+        0|1) ;;
+        *) tail -20 "$logs/rerun.log" >&2
+           fail "the re-run on the branch alone did not run (exit $rerun_rc), so these merged failures are unproven (log above): $(printf '%s' "$merged_fail" | tr '\n' ' ')" ;;
+      esac
       alone_fail="$(failed_ids "$logs/rerun.log")"
       caused="$(comm -23 <(printf '%s\n' "$merged_fail") <(printf '%s\n' "$alone_fail"))"
       if [ -n "$caused" ]; then

@@ -14,7 +14,11 @@ One line per grant. Two forms:
     ALLOW-UNTIL YYYY-MM-DD <gate-id> — reason     every day through that date
     ALLOW       YYYY-MM-DD <gate-id> — reason     that one local day only
 
-A grant past its date is ignored. A line without a date grants nothing.
+Start a grant line at column 0, with no space before `ALLOW`. The guard
+ignores an indented line. It also ignores every line inside a fenced code
+block (` ``` ` or `~~~`). So the examples in this file grant nothing.
+
+The guard ignores a grant past its date. A line without a date grants nothing.
 Delete stale lines when you like. They are inert.
 
 ## Gate ids
@@ -34,11 +38,14 @@ same `grant` field.
 
 ## Example window
 
-Replace the date. Keep only the lines you mean to grant.
+These examples are inert. They sit in a fence, and their date has passed. To
+open a gate, write a real line at column 0, outside any fence, with a real date.
 
-    ALLOW-UNTIL 2030-01-31 merge — dev phase: agents merge their own green PRs
-    ALLOW-UNTIL 2030-01-31 deploy — dev phase: agents may run deploy scripts and read logs
-    ALLOW-UNTIL 2030-01-31 guard-write — dev phase: agents may repair guard false positives
+```text
+ALLOW-UNTIL 2000-01-31 merge — dev phase: agents merge their own green PRs
+ALLOW-UNTIL 2000-01-31 deploy — dev phase: agents may run deploy scripts and read logs
+ALLOW-UNTIL 2000-01-31 guard-write — dev phase: agents may repair guard false positives
+```
 
 With no line for an id, that gate stays shut. When the date passes, the gate
 shuts again with no further action.

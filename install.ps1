@@ -234,8 +234,7 @@ elseif (-not (Test-Path (Join-Path $Templates "scripts"))) {
   if ((Test-Path ".gitignore") -and (Select-String -Path ".gitignore" -Pattern "^\.dev_up/$" -Quiet)) {
     Skip ".gitignore already lists .dev_up/"
   } else {
-    if ((Test-Path ".gitignore") -and -not ((Get-Content ".gitignore" -Raw) -match "
-$")) { Add-Content ".gitignore" "" }
+    if ((Test-Path ".gitignore") -and -not ((Get-Content ".gitignore" -Raw) -match '\r?\n$')) { Add-Content ".gitignore" "" }
     Add-Content ".gitignore" ".dev_up/"
     Ok "added .dev_up/ to .gitignore"
   }
@@ -247,6 +246,14 @@ $")) { Add-Content ".gitignore" "" }
     Copy-Item $board ".claude/task-board.md"
     Ok ".claude/task-board.md (point the dispatch commands at your task system)"
   } else { Warn "task-board template missing from kit ($board)" }
+
+  # HANDOFF.md and fences.json sit at the repo root: next-ticket.md names them.
+  foreach ($rootfile in @("HANDOFF.md", "fences.json")) {
+    $src = Join-Path $Templates "shared/$rootfile"
+    if (Test-Path $rootfile) { Skip "$rootfile exists" }
+    elseif (Test-Path $src) { Copy-Item $src $rootfile; Ok "$rootfile (repo root)" }
+    else { Warn "$rootfile template missing from kit ($src)" }
+  }
 
   if (Have bash) {
     bash scripts/premerge.test.sh 2>&1 | Out-Null

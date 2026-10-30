@@ -351,7 +351,7 @@ ALLOW-UNTIL 2026-11-30 deploy — dev phase, owner at the keyboard
 | Read or write env files on the box | `secrets`, `env-write` |
 | Write under `deploy/` | `deploy-write` |
 | Flip a feature flag, and name the flag and the box | `enforcement-flip` |
-| Merge its own PR | none |
+| Merge its own PR | `merge` (the default `plan-guard.config.json` gates `gh pr merge`; drop that rule to allow it without a grant) |
 | Edit the guard or its settings | `guard-write` |
 
 ### What never unlocks

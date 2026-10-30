@@ -57,7 +57,11 @@ has_fn() { declare -F "$1" >/dev/null; }
 # ── The config ──────────────────────────────────────────────────────────────
 
 case "${1:-up}" in
-  -h|--help|help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help|help)
+    # Print the whole usage block: every comment line up to the line that
+    # starts "EVERYTHING APP-SPECIFIC".
+    awk 'NR == 1 { next } /^# EVERYTHING/ { exit } /^#/ { sub(/^# ?/, ""); print }' "$0" | sed '/^[═]*$/d'
+    exit 0 ;;
 esac
 [ -f "$CONFIG" ] || fail "no config at $CONFIG.
          Copy the example, then edit the values it marks CHANGE:
@@ -166,15 +170,26 @@ listener_pid() {
   if [ "$WIN" = 1 ]; then
     { netstat -ano 2>/dev/null || true; } | tr -d '\r' \
       | awk -v p=":$1" '$4 == "LISTENING" && !hit && substr($2, length($2) - length(p) + 1) == p { hit = $5 } END { if (hit) print hit }'
-  else
+  elif command -v ss >/dev/null 2>&1; then
     { ss -ltnpH "sport = :$1" 2>/dev/null || true; } \
       | awk 'match($0, /pid=[0-9]+/) && !hit { hit = substr($0, RSTART + 4, RLENGTH - 4) } END { if (hit) print hit }'
+  elif command -v lsof >/dev/null 2>&1; then
+    # macOS: no ss. lsof -t prints bare PIDs. awk reads ALL input (no early exit).
+    { lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null || true; } \
+      | awk '!hit { hit = $1 } END { if (hit) print hit }'
   fi
+  # With neither ss nor lsof there is no PID to give. port_busy still works.
 }
 port_busy() {
   [ "$1" != 0 ] || return 1
   if [ "$WIN" = 1 ]; then [ -n "$(listener_pid "$1")" ]
-  else { ss -ltnH "sport = :$1" 2>/dev/null || true; } | grep -q .
+  elif command -v ss >/dev/null 2>&1; then
+    { ss -ltnH "sport = :$1" 2>/dev/null || true; } | grep -q .
+  elif command -v lsof >/dev/null 2>&1; then
+    [ -n "$(listener_pid "$1")" ]
+  else
+    # Last resort: netstat -an. Linux prints 0.0.0.0:PORT, BSD prints *.PORT.
+    { netstat -an 2>/dev/null || true; } | grep -E "[.:]$1[[:space:]].*LISTEN" >/dev/null
   fi
 }
 
@@ -237,12 +252,32 @@ launch() {
   while IFS= read -r line; do [ -n "$line" ] && envs+=("$line"); done < <("$envfn")
   if [ "$WIN" = 1 ]; then
     ( cd "$dir" && exec env -i "${envs[@]}" bash -c "$cmd" ) > "$STATE_DIR/$name.log" 2>&1 &
-  else
+  elif command -v setsid >/dev/null 2>&1; then
     ( cd "$dir" && exec setsid env -i "${envs[@]}" bash -c "$cmd" ) > "$STATE_DIR/$name.log" 2>&1 &
+    echo group > "$STATE_DIR/$name.mode"
+  elif command -v perl >/dev/null 2>&1; then
+    # macOS has no setsid. perl makes the same new session, then execs.
+    ( cd "$dir" && exec perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' -- env -i "${envs[@]}" bash -c "$cmd" ) > "$STATE_DIR/$name.log" 2>&1 &
+    echo group > "$STATE_DIR/$name.mode"
+  else
+    # No way to open a new session. --stop then kills the PID and its children.
+    ( cd "$dir" && exec nohup env -i "${envs[@]}" bash -c "$cmd" ) > "$STATE_DIR/$name.log" 2>&1 &
+    echo tree > "$STATE_DIR/$name.mode"
   fi
   local pid=$! winpid=""
   [ "$WIN" = 1 ] && winpid="$(cat "/proc/$pid/winpid" 2>/dev/null || true)"
   printf '%s %s\n' "$pid" "$winpid" > "$STATE_DIR/$name.pid"
+}
+
+# kill_tree <pid>: TERM the children (pkill -P, else ps), then the process.
+kill_tree() {
+  local c
+  if command -v pgrep >/dev/null 2>&1; then
+    for c in $(pgrep -P "$1" 2>/dev/null || true); do kill_tree "$c"; done
+  else
+    for c in $({ ps -A -o pid= -o ppid= 2>/dev/null || true; } | awk -v p="$1" '$2 == p { print $1 }'); do kill_tree "$c"; done
+  fi
+  kill -TERM "$1" 2>/dev/null || true
 }
 
 # stop_one <name> <port>: end the process tree, then whatever still listens on
@@ -255,7 +290,13 @@ stop_one() {
     if [ "$WIN" = 1 ]; then
       [ -n "$winpid" ] && taskkill //F //T //PID "$winpid" >/dev/null 2>&1 || true
     else
-      [ -n "$pid" ] && { kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true; }
+      if [ -n "$pid" ]; then
+        if [ "$(cat "$STATE_DIR/$name.mode" 2>/dev/null || echo group)" = tree ]; then
+          kill_tree "$pid"
+        else
+          kill -TERM -- "-$pid" 2>/dev/null || kill_tree "$pid"
+        fi
+      fi
     fi
   fi
   for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -266,7 +307,7 @@ stop_one() {
     fi
     sleep 1
   done
-  rm -f "${STATE_DIR:?}/${name:?}.pid"
+  rm -f "${STATE_DIR:?}/${name:?}.pid" "${STATE_DIR:?}/${name:?}.mode"
   [ -z "$(listener_pid "$port")" ] || fail "port $port still has a listener after the $name stop"
 }
 
@@ -438,7 +479,7 @@ cmd_down() {
   load_state || { say "no dev stack in this worktree"; return 0; }
   [ -z "$DEV_UP_WEB_CMD" ] || stop_one web "$WEB_PORT"
   [ -z "$DEV_UP_API_CMD" ] || stop_one api "$API_PORT"
-  dk rm -f "$NAME-pg" "$NAME-cache" >/dev/null 2>&1 || true
+  dk rm -fv "$NAME-pg" "$NAME-cache" >/dev/null 2>&1 || true
   rm -rf "${STATE_DIR:?}"
   say "removed the dev stack of this worktree (slot $SLOT), data included"
 }

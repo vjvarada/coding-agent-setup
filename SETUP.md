@@ -344,7 +344,8 @@ scripts/dev_up.sh  dev_up.config.example   one-command local stack per worktree
 scripts/premerge.sh  premerge.test.sh      test the merge with today's main
 scripts/worktree.sh                        one worktree per session
 .claude/commands/work-on-task.md           the task-board protocol as a command
-docs/ (or repo root)  task-board.md  HANDOFF.md  fences.json
+.claude/task-board.md                      the task-board protocol
+HANDOFF.md  fences.json                  at the repo root
 ```
 
 Copy from `templates/scripts/`, `templates/shared/` and `templates/claude/`. Mark

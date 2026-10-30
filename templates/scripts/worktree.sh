@@ -10,7 +10,10 @@
 # Usage:
 #   bash scripts/worktree.sh new <slug> [base]   # base defaults to <remote>/<branch>
 #   bash scripts/worktree.sh list
-#   bash scripts/worktree.sh remove <slug>
+#   bash scripts/worktree.sh remove [--force] <slug>
+#
+# `remove` refuses a worktree with uncommitted or untracked files. Only
+# `remove --force <slug>` deletes them.
 #
 # Config (environment variables, all optional):
 #   WORKTREE_ROOT         prefix of every worktree path. A worktree lives at
@@ -32,13 +35,18 @@
 # junction" test is needed, and none can get the answer wrong.
 set -euo pipefail
 
-REPO="$(git rev-parse --show-toplevel)"
+# The MAIN checkout, even when this runs from inside a worktree: the common git
+# dir is always <main>/.git, so its parent is the main checkout. --show-toplevel
+# would return the worktree itself and build wt-wt-... paths.
+COMMON="$(git rev-parse --git-common-dir)"
+COMMON="$(cd "$COMMON" && pwd)"
+REPO="$(dirname "$COMMON")"
 REMOTE="${WORKTREE_REMOTE:-origin}"
 BRANCH="${WORKTREE_BASE_BRANCH:-main}"
 WT_ROOT="${WORKTREE_ROOT:-$(dirname "$REPO")/wt-$(basename "$REPO")}"
 cmd="${1:-}"
 
-usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
 wt_path() { printf '%s-%s' "$WT_ROOT" "$1"; }
 
@@ -67,21 +75,52 @@ new)
 
 list)
   git -C "$REPO" worktree list
+  # Mark worktrees that hold uncommitted work, so nobody prunes one blindly.
+  git -C "$REPO" worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r wtp; do
+    if [ "$wtp" != "$REPO" ] && [ -n "$(git -C "$wtp" status --porcelain 2>/dev/null)" ]; then
+      echo "   DIRTY (uncommitted work, do not remove): $wtp"
+    fi
+  done
   echo
   echo "primary checkout: $REPO"
   n="$(git -C "$REPO" worktree list | wc -l)"
   if [ "$n" -gt 6 ]; then
     echo
     echo "!! $n worktrees. Stale ones hold branches nobody reads."
-    echo "   Prune the merged ones: bash scripts/worktree.sh remove <slug>"
+    echo "   Prune the merged, clean ones: bash scripts/worktree.sh remove <slug>"
+    echo "   (remove refuses a dirty worktree; DIRTY ones are listed above)"
   fi
   ;;
 
 remove)
+  force=0
+  if [ "${2:-}" = "--force" ]; then force=1; shift; fi
   slug="${2:-}"
   [ -n "$slug" ] || usage
   path="$(wt_path "$slug")"
   [ -d "$path" ] || { echo "!! no worktree at $path"; exit 1; }
+
+  # REFUSE to delete work that exists nowhere else. Uncommitted and untracked
+  # files are lost for good with the folder. Only --force passes this.
+  dirty="$(git -C "$path" status --porcelain 2>/dev/null || true)"
+  if [ -n "$dirty" ] && [ "$force" != 1 ]; then
+    echo "!! $path has uncommitted or untracked work:"
+    printf '%s
+' "$dirty" | sed 's/^/     /'
+    echo "   Commit or move it. To delete it anyway:"
+    echo "      bash scripts/worktree.sh remove --force $slug"
+    exit 1
+  fi
+  # Commits that exist only on this branch are lost with it if never pushed.
+  unpushed=""
+  if git -C "$path" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+    unpushed="$(git -C "$path" rev-list --count '@{upstream}..HEAD' 2>/dev/null || true)"
+  else
+    unpushed="$(git -C "$path" rev-list --count HEAD --not --remotes 2>/dev/null || true)"
+  fi
+  if [ -n "$unpushed" ] && [ "$unpushed" != 0 ]; then
+    echo "   !! branch $slug has $unpushed commit(s) not on any remote. The branch survives, the commits stay reachable only through it."
+  fi
 
   # A dev stack first. Its containers and servers run from this folder, and the
   # files will not delete while they run. Its state folder says one exists.
@@ -120,7 +159,11 @@ remove)
     fi
   fi
 
-  git -C "$REPO" worktree remove "$path" --force
+  if [ "$force" = 1 ]; then
+    git -C "$REPO" worktree remove "$path" --force
+  else
+    git -C "$REPO" worktree remove "$path"
+  fi
   echo "   removed $path"
   echo "   The BRANCH still exists. Delete it when it is merged:"
   echo "      git -C \"$REPO\" branch -d $slug"

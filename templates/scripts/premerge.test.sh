@@ -182,6 +182,39 @@ overlap_repo unnamed
 PREMERGE_AFFECTED_CMD='echo boom; exit 2' PREMERGE_RERUN_CMD=true run_pm "$REPO"
 check "a run that names no test blocks" "$([ $RC = 1 ] && has "$ERR" 'no test is named'; echo $?)" "rc=$RC $ERR"
 
+# 11. commit.gpgsign is on and the signer fails: the trial merge must not sign.
+new_repo signing
+commit_file "$REPO" db/migrations/317_feat.sql
+advance_main "$REPO" db/migrations/316_other.sql
+git -C "$REPO" config commit.gpgsign true
+git -C "$REPO" config gpg.program false
+H="$(head_of "$REPO")"
+run_pm "$REPO"
+check "a failing signer does not stop the trial merge" "$([ $RC = 0 ] && has "$OUT" PASS; echo $?)" "rc=$RC $ERR"
+check "the signing case ends clean on the branch" \
+  "$(undone "$REPO" "$H" && [ "$(git -C "$REPO" symbolic-ref --short HEAD)" = feat ]; echo $?)"
+
+# 12. A fence rewrites a tracked file. The run must end on the branch, with a
+#     clean tree, and the exit code must match the printed verdict.
+new_repo rewrite
+commit_file "$REPO" feat.md
+advance_main "$REPO" other.md
+H="$(head_of "$REPO")"
+PREMERGE_FENCES='echo changed > feat.md' run_pm "$REPO"
+check "a fence that rewrites a tracked file: PASS and exit 0 agree" \
+  "$([ $RC = 0 ] && has "$OUT" PASS; echo $?)" "rc=$RC $ERR"
+check "...and it warns, ends on the branch with a clean tree" \
+  "$(has "$ERR" 'changed tracked files' && undone "$REPO" "$H" && [ "$(git -C "$REPO" symbolic-ref --short HEAD)" = feat ]; echo $?)"
+PREMERGE_FENCES='echo changed > feat.md; false' run_pm "$REPO"
+check "a rewriting fence that fails: exit 1, on the branch, clean" \
+  "$([ $RC = 1 ] && has "$ERR" FAIL && undone "$REPO" "$H" && [ "$(git -C "$REPO" symbolic-ref --short HEAD)" = feat ]; echo $?)" "rc=$RC $ERR"
+
+# 13. A re-run command that cannot run (exit 127) is a FAIL, never "pass alone".
+overlap_repo rerun_missing
+PREMERGE_AFFECTED_CMD="$FAILS" PREMERGE_RERUN_CMD='premerge_no_such_cmd_xyz' run_pm "$REPO"
+check "a re-run that exits 127 fails with the did-not-run message" \
+  "$([ $RC = 1 ] && has "$ERR" 'did not run (exit 127)' && ! has "$ERR" 'pass on the branch alone'; echo $?)" "rc=$RC $ERR"
+
 echo
 echo "premerge.test: $PASS passed, $FAILED failed"
 if [ "$FAILED" -gt 0 ]; then
