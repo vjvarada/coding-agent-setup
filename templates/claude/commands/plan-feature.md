@@ -42,10 +42,17 @@ Loop back to `spec-writer` once with the blockers. If it still fails, the
 workstream needs an owner decision — record it and move on.
 
 **5 — Record.** Write the agreed rows to the work plan, with each row linking to
-its owning spec. Add any new owner gates to `.claude/plan-guard.config.json`
-**and a test case to `plan-guard.test.mjs`** — a gate that exists only in prose
-is not a gate. Run the guard's self-test. Commit the plan, the specs, and the
-wireframes together.
+its owning spec. A new owner gate goes in `.claude/plan-guard.config.json`
+**with a test case in `plan-guard.test.mjs`**. A gate that exists only in prose
+is not a gate.
+
+Those two files are the guard, and the guard protects itself. To edit them,
+you need the owner's `guard-write` grant in `.claude/OWNER_GRANTS.md`.
+- **With the grant:** edit both files, and run the guard's self-test.
+- **Without it:** do not edit them. Write the proposed config entry and its
+  test case in your hand-over. The owner applies them.
+
+Commit the plan, the specs, and the wireframes together.
 
 ## Report
 
@@ -55,7 +62,7 @@ ALREADY BUILT: <what the survey found — often the most valuable finding here>
 ROWS ADDED: <id — outcome — gate — blocked by>
 SPECS: <path — auditor verdict>
 WIREFRAMES: <path — screens covered>
-NEW OWNER GATES: <added to plan-guard config + tested>
+NEW OWNER GATES: <added to plan-guard config + tested, or proposed for the owner to apply>
 OWNER DECISIONS NEEDED: <question → which workstream it blocks>
 READY TO DISPATCH NOW: <the rows that would pass the auditor today>
 ```

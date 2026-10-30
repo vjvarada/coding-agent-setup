@@ -206,6 +206,14 @@ well for a few days. The reason not to: every other safeguard here is a check on
 like from the inside. The human at the end is not reviewing whether the tests
 passed — they are the only reader asking whether this should ship at all.
 
+**The exception is earned, not assumed.** A project with a staging environment, a
+daily release train and a dated owner-grant window can extend the loop through
+merge. The grant file lets agents merge, deploy and flip flags only until a date
+the owner wrote. The guard still refuses force-push, commits on `main`, writes to
+the grants file and infrastructure destruction. The release train still gives the
+owner a checkpoint before customers see anything. Build those three first. See
+[`DELIVERY.md`](DELIVERY.md) §11.
+
 ---
 
 ## 6. Cost, and when not to use this

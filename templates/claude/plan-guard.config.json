@@ -13,11 +13,17 @@
     "every new entry, and run: node .claude/hooks/plan-guard.test.mjs",
     "",
     "Fields: pattern = JS regex source (case-insensitive) tested against the Bash",
-    "command; scanContent = also reject file writes whose CONTENT matches."
+    "command; scanContent = also reject file writes whose CONTENT matches;",
+    "grant = the id the OWNER may write in .claude/OWNER_GRANTS.md to open this gate for a",
+    "dated window (ALLOW-UNTIL YYYY-MM-DD <grant> — reason). A gate with NO grant field is",
+    "sealed: force-push, history rewrite, destructive data and infrastructure acts, publish.",
+    "Commit or push on a protected branch and writing the grant file are sealed in code.",
+    "Grantable ids: deploy, secrets, env-write, deploy-write, enforcement-flip, merge, guard-write."
   ],
-
-  "protectedBranches": ["main", "master"],
-
+  "protectedBranches": [
+    "main",
+    "master"
+  ],
   "commandGates": [
     {
       "id": "force-push",
@@ -37,7 +43,8 @@
     {
       "id": "deploy",
       "pattern": "\\b(deploy|release)[\\w./-]*\\.(sh|ps1)\\b|\\b(npm|pnpm|yarn|make|just)\\s+run?\\s*deploy\\b|\\bvercel\\s+(deploy|--prod)|\\bfly\\s+deploy\\b|\\bnetlify\\s+deploy\\b",
-      "why": "Deploying is outward-facing and often auto-applies migrations the agent cannot undo."
+      "why": "Deploying is outward-facing and often auto-applies migrations the agent cannot undo.",
+      "grant": "deploy"
     },
     {
       "id": "infra-apply",
@@ -47,7 +54,8 @@
     {
       "id": "remote-shell",
       "pattern": "\\bssh\\s+[\\w.-]+@|\\bscp\\s+[^\\n]*@[\\w.-]+:",
-      "why": "Reaching a live host steps outside the repo, where nothing is reviewable or revertible."
+      "why": "Reaching a live host steps outside the repo, where nothing is reviewable or revertible.",
+      "grant": "deploy"
     },
     {
       "id": "destructive-db",
@@ -62,31 +70,46 @@
     {
       "id": "read-secrets",
       "pattern": "(^|\\s)(cat|type|Get-Content|less|head|tail)\\s+[^\\n|]*(\\.env|credentials|id_rsa|\\.pem)\\b",
-      "why": "Pulls live credentials into a transcript."
+      "why": "Pulls live credentials into a transcript.",
+      "grant": "secrets"
     },
     {
       "id": "prod-flag-flip",
       "pattern": "\\b(ENABLE_PROD_[A-Z_]+|__REPLACE_WITH_YOUR_FLAGS__)\\s*[=:]\\s*[\"']?(1|true|on)\\b",
       "why": "Enabling a production feature flag is an owner decision. REPLACE this pattern with your project's real flag names.",
-      "scanContent": true
+      "scanContent": true,
+      "grant": "enforcement-flip"
+    },
+    {
+      "id": "merge",
+      "pattern": "\\bgh\\s+pr\\s+merge\\b",
+      "why": "Merging lands code on the default branch. The owner opens this gate with a merge grant, or merges the PR by hand.",
+      "grant": "merge"
     }
   ],
-
   "pathGates": [
     {
       "id": "dotenv",
       "pattern": "(^|[\\\\/])\\.env(\\.|$)",
-      "why": "Environment files hold live credentials."
+      "why": "Environment files hold live credentials.",
+      "grant": "env-write"
     },
     {
       "id": "deploy-dir",
       "pattern": "(^|[\\\\/])(deploy|infra|terraform|\\.github[\\\\/]workflows)[\\\\/]",
-      "why": "Deploy, infrastructure and CI definitions run against real environments."
+      "why": "Deploy, infrastructure and CI definitions run against real environments.",
+      "grant": "deploy-write"
     },
     {
       "id": "secrets-files",
       "pattern": "(^|[\\\\/])(secrets?|credentials)([\\\\/]|\\.)|\\.(pem|p12|key)$",
       "why": "Credential material."
+    },
+    {
+      "id": "guard-files",
+      "pattern": "(^|[\\\\/])\\.claude[\\\\/](hooks[\\\\/]plan-guard[^\\\\/]*|plan-guard\\.config\\.json|settings\\.json)$",
+      "why": "These files ARE the guard. A guard that an agent can edit is not a guard.",
+      "grant": "guard-write"
     }
   ]
 }

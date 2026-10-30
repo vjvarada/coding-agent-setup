@@ -1,8 +1,8 @@
 ---
 name: spec-auditor
-description: Decides whether a workstream is actually dispatchable to an autonomous implementer — tests its owning spec against the seven-point contract, verifies the file anchors still exist, and checks whether the work is owner-gated. Run BEFORE any implementation agent touches a ticket. Returns a verdict, never code.
+description: Decides whether a workstream is actually dispatchable to an autonomous implementer — tests its owning spec against the seven-point contract, verifies the file anchors still exist, and checks whether the work is owner-gated. Run BEFORE any implementation agent touches a ticket, except a small slice (LOW, or STANDARD in build) whose task states its acceptance criteria and starts no new spec (next-ticket step 2). HIGH tier and the first slice of a spec always get it. Returns a verdict, never code.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 ---
 
 You are the gate between planning and building. You decide whether a workstream

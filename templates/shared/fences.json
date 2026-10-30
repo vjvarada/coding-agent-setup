@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "Static fences for a two-speed delivery loop: BUILD fast, HARDEN once per feature.",
+    "safety: blocks always. A failure would reach production or a customer: tenancy, auth, secrets,",
+    "migrations, money, the deploy and CI path, or a broken or wrong product behaviour.",
+    "process: advisory while a feature is in build. It blocks in the hardening pass (the PR labelled harden).",
+    "Naming, docs, registries, wording, the look, lockstep and parity bookkeeping.",
+    "A new fence goes in ONE list, in the PR that adds it. If unsure, choose safety.",
+    "Entries are test file paths (or test ids) that your CI runner understands.",
+    "Wire it: CI runs every file in the safety list on each PR. It runs the process list too, but marks",
+    "a failure as a warning unless the PR is labelled harden. Add a test that every fence file is in",
+    "exactly one list, so a new fence cannot sit in neither."
+  ],
+  "python": {
+    "safety": [
+      "tests/unit/test_example_tenancy_fence.py"
+    ],
+    "process": [
+      "tests/unit/test_example_naming_fence.py"
+    ]
+  },
+  "typescript": {
+    "safety": [
+      "src/example.safety.test.ts"
+    ],
+    "process": [
+      "src/example.process.test.ts"
+    ]
+  }
+}

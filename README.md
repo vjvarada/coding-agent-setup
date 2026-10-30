@@ -24,6 +24,10 @@ make large, unfamiliar codebases cheap and fast to work on:
   build → verify → review. The plan lives in the repo as a dispatch board, the
   owner gates live in a hook that enforces them deterministically, and the loop
   stops at "PR opened" so merge and deploy stay human.
+- **Delivery** — the path from "slice built" to "in production": a one-command
+  local stack per worktree, risk-tiered review, a premerge check against today's
+  `main`, staging plus a daily release train, and an optional dated owner-grant
+  window. Run it before you push, test the merge, and verify by evidence.
 
 ## Quickstart
 
@@ -45,9 +49,11 @@ config, never overwrite, and no-op anything already installed.
 | [`SETUP.md`](SETUP.md) | **Agent-facing** step-by-step auto-install playbook |
 | [`PLAYBOOK.md`](PLAYBOOK.md) | The **methodology** — why these tools, the principles behind them, hard-won lessons |
 | [`ORCHESTRATION.md`](ORCHESTRATION.md) | **Multi-agent planning + dispatch** — the two loops, the seven roles, where wireframes and evals fit, what stays human, and what it costs |
+| [`DELIVERY.md`](DELIVERY.md) | **Delivery** (capability #6) — local-first inner loop, risk tiers, two-speed delivery, premerge, staging and the release train, owner-grant window, task-board protocol, and how to measure your own speed |
 | [`HARNESS-PRACTICES.md`](HARNESS-PRACTICES.md) | Harder harness practices (tool risk annotations, fail-closed permissions, trajectory evals, prompt-cache discipline, CI gates) for keeping a codebase agent-developable over time |
 | [`install.sh`](install.sh) / [`install.ps1`](install.ps1) | Runnable installers (Unix / Windows) |
 | [`templates/`](templates/) | Ready-to-copy config for Claude Code + VS Code Copilot |
+| [`templates/scripts/`](templates/scripts/) | Delivery scripts: `dev_up.sh` (local stack), `premerge.sh`, `worktree.sh` |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How we push new learnings back into this kit |
 
 ## Host support

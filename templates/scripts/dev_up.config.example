@@ -1,0 +1,188 @@
+# dev_up.config: everything app-specific for scripts/dev_up.sh.
+#
+# Copy this file to scripts/dev_up.config and edit it. dev_up.sh sources it, so
+# it is plain bash. Commit your copy: it holds no secrets, only local dev values.
+#
+# Values marked CHANGE are guesses for a typical stack:
+#   Postgres (pgvector image) + a Python API (uvicorn) + a Next.js web app.
+# Everything else is a fine default.
+
+# ── Identity ────────────────────────────────────────────────────────────────
+# CHANGE: a short name. It prefixes the container names.
+DEV_UP_PROJECT="myapp"
+
+# Files that make dev_up refuse to run. Frameworks read these themselves, so
+# their keys would reach the stack. Add every dotenv path your apps read.
+# CHANGE: list your own paths.
+DEV_UP_DOTENV_FILES=(".env" "web/.env" "web/.env.local" "web/.env.development" "web/.env.development.local")
+
+# Tools that must be on PATH. CHANGE: list what your commands need.
+DEV_UP_REQUIRED_TOOLS=(docker curl uv node)
+
+# ── Ports ───────────────────────────────────────────────────────────────────
+# Each worktree gets a slot from 0 to 49. Its ports are base + slot.
+# CHANGE: pick bases that clear every port this repo already uses.
+DEV_UP_DB_BASE=6400       # 6400-6449
+DEV_UP_CACHE_BASE=6450    # leave empty ("") for no cache container
+DEV_UP_API_BASE=8400
+DEV_UP_WEB_BASE=3400
+
+# ── Database ────────────────────────────────────────────────────────────────
+DEV_UP_DB_IMAGE="pgvector/pgvector:pg16"    # CHANGE if you need another image
+DEV_UP_DB_USER="app_owner"
+DEV_UP_DB_PASSWORD="app_owner"
+DEV_UP_DB_NAME="app_dev"
+
+# Folders mounted READ-ONLY into the container, as "<repo-relative>:<container-path>".
+# CHANGE: the folder that holds your migrations, and your runner if it is a script.
+DEV_UP_DB_MOUNTS=("db:/app/db")
+
+# Runs INSIDE the container (see the timing note in dev_up.sh). The last line
+# it prints shows in the start-up summary. CHANGE: call your own runner.
+# This example applies db/migrations/*.sql in name order and records each file.
+DEV_UP_MIGRATE_CMD='set -e
+export PGUSER="$POSTGRES_USER" PGDATABASE="$POSTGRES_DB"
+psql -X -q -c "CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY)"
+applied=0; recorded=0
+for f in /app/db/migrations/*.sql; do
+  n="$(basename "$f")"
+  if [ "$(psql -X -tAc "SELECT count(*) FROM schema_migrations WHERE name = '"'"'$n'"'"'")" != 0 ]; then recorded=$((recorded + 1)); continue; fi
+  psql -X -q -v ON_ERROR_STOP=1 -1 -f "$f"
+  psql -X -q -c "INSERT INTO schema_migrations VALUES ('"'"'$n'"'"')"
+  applied=$((applied + 1))
+done
+echo "($applied applied, $recorded already recorded)"'
+
+# Hooks. Both are optional. Inside them, pg_sql reads SQL on stdin (as the owner)
+# and pg_scalar "<sql>" returns one value.
+#
+# This pair is the example of a non-superuser APP ROLE plus row level security
+# that binds like production. A superuser skips RLS, so an app that connects as
+# the owner never feels a missing policy. Delete both hooks if you do not use RLS.
+
+# Before migrations: some migrations grant to the app role only if it exists.
+dev_up_before_migrate() {
+  pg_sql >/dev/null <<'SQL'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN CREATE ROLE app_user; END IF;
+END $$;
+ALTER ROLE app_user WITH LOGIN PASSWORD 'app_user' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS INHERIT;
+GRANT CONNECT ON DATABASE app_dev TO app_user;
+GRANT USAGE ON SCHEMA public TO app_user;
+SQL
+}
+
+# After migrations: run the RLS promotion ONCE (a comment on the database is the
+# marker), then grant the app role what production gives it.
+dev_up_after_migrate() {
+  local marker
+  marker="$(dk exec "$NAME-pg" psql -X -U "$DEV_UP_DB_USER" -d "$DEV_UP_DB_NAME" -tAc \
+    "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = '$DEV_UP_DB_NAME'" | tr -d '\r')"
+  if [ "$marker" != "dev_up: rls promoted" ] && [ -f "$REPO/db/rls_promotion.sql" ]; then
+    # CHANGE: your own promotion script, or delete this block.
+    dk exec "$NAME-pg" psql -X -q -v ON_ERROR_STOP=1 -U "$DEV_UP_DB_USER" -d "$DEV_UP_DB_NAME" \
+      -f /app/db/rls_promotion.sql >> "$STATE_DIR/migrate.log" 2>&1 \
+      || { tail -20 "$STATE_DIR/migrate.log" >&2; fail "the RLS promotion failed"; }
+    pg_sql -c "COMMENT ON DATABASE app_dev IS 'dev_up: rls promoted'" >/dev/null
+  fi
+  pg_sql >/dev/null <<'SQL'
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_user;
+SQL
+}
+
+# ── Cache ───────────────────────────────────────────────────────────────────
+DEV_UP_CACHE_IMAGE="redis:7-alpine"         # leave empty ("") for no cache
+
+# ── The API ─────────────────────────────────────────────────────────────────
+# CHANGE: the folder (relative to the repo), the command and the health path.
+# {PORT} becomes the slot's port. The process binds to 127.0.0.1 only.
+DEV_UP_API_DIR="."
+DEV_UP_API_CMD='uv run uvicorn app.main:app --host 127.0.0.1 --port {PORT} --reload'
+DEV_UP_API_HEALTH="/health"                 # must answer HTTP 200
+DEV_UP_API_WAIT=240                         # seconds to wait for the health path
+
+# ── The web app ─────────────────────────────────────────────────────────────
+# CHANGE: as above. Set DEV_UP_WEB_CMD="" if there is no web app.
+DEV_UP_WEB_DIR="web"
+DEV_UP_WEB_CMD='node node_modules/next/dist/bin/next dev -H 127.0.0.1 -p {PORT}'
+DEV_UP_WEB_HEALTH="/api/health"             # must answer HTTP 200
+DEV_UP_WEB_WAIT=240
+# Install when this path (relative to DEV_UP_WEB_DIR) is missing. Use ci, not
+# install: it never rewrites the lockfile.
+DEV_UP_WEB_INSTALL_PROBE="node_modules/next/dist/bin/next"
+DEV_UP_WEB_INSTALL_CMD='npm ci --no-audit --no-fund --loglevel=error'
+
+# ── What each process gets ──────────────────────────────────────────────────
+# Each process starts from an EMPTY environment plus a short base (PATH, HOME,
+# and the like). These hooks print the rest as NAME=value lines. They may use
+# DB_PORT, CACHE_PORT, API_PORT, WEB_PORT and TOKEN (a random value per stack).
+# CHANGE: the names your app reads.
+dev_up_api_env() {
+  printf '%s\n' \
+    "APP_ENV=dev" \
+    "DATABASE_URL=postgresql://app_user:app_user@127.0.0.1:$DB_PORT/app_dev" \
+    "REDIS_URL=redis://127.0.0.1:$CACHE_PORT/0" \
+    "INTERNAL_TOKEN=$TOKEN"
+}
+dev_up_web_env() {
+  printf '%s\n' \
+    "API_BASE_URL=http://127.0.0.1:$API_PORT" \
+    "INTERNAL_TOKEN=$TOKEN" \
+    "NEXT_TELEMETRY_DISABLED=1"
+}
+dev_up_seed_env() {
+  printf '%s\n' \
+    "SEED_DATABASE_URL=postgresql://app_owner:app_owner@127.0.0.1:$DB_PORT/app_dev" \
+    "SEED_API_URL=http://127.0.0.1:$API_PORT" \
+    "SEED_TOKEN=$TOKEN"
+}
+
+# ── Production's switches, held OFF where they reach people ────────────────
+# dev_up applies a flags file in the form  <scope>:<NAME>=<value>.
+# Where it comes from is yours: write dev_up_refresh_flags below.
+DEV_UP_FLAGS_FILE="$SCRIPT_DIR/dev_up.flags"
+DEV_UP_FLAGS_API_SCOPE="api"        # lines that start "api:" go to the API
+DEV_UP_FLAGS_WEB_SCOPE="web"        # lines that start "web:" go to the web app
+
+# A name must match this to come across at all. Names that hold KEY, SECRET,
+# TOKEN, PASSWORD, DSN or URL never come across, whatever this says.
+DEV_UP_SWITCH='^(NEXT_PUBLIC_[A-Z0-9_]+|[A-Z0-9_]+_ENABLED)$'
+
+# A switch whose name matches this reaches a person or a third party, so it
+# stays OFF here (0 or false). CHANGE: add the words your switches use.
+DEV_UP_HELD='(EMAIL|SMS|PUSH|WEBHOOK|SEND|OUTBOUND|NOTIFY|SYNC|SCHEDULER|DIGEST|INVITE|SIGNUP|WHATSAPP)'
+
+# Also off here: switches that need a service the local stack does not run.
+DEV_UP_LOCAL_OFF='^(ADMIN_CONSOLE_ENABLED)$'
+
+# Off even when the flags file does not name them. Use it for loops that start
+# unless told not to. Applied to the API scope.
+DEV_UP_FORCED_OFF=(EMAIL_SYNC_ENABLED=false WORKFLOW_SCHEDULER_ENABLED=false)
+
+# --refresh-flags runs this. It must write $DEV_UP_FLAGS_FILE. CHANGE: copy the
+# switches from wherever you keep them. Print values only, never a secret.
+# dev_up_refresh_flags() {
+#   ssh staging "cat /path/to/flags.env" \
+#     | grep -E '^(api|web):[A-Z0-9_]+=[A-Za-z0-9_.:-]{0,64}$' > "$DEV_UP_FLAGS_FILE"
+#   say "wrote $(wc -l < "$DEV_UP_FLAGS_FILE") switches to $DEV_UP_FLAGS_FILE. Review the diff, then commit it."
+# }
+
+# ── Seed data ───────────────────────────────────────────────────────────────
+# Runs once, after the API is up, with the dev_up_seed_env environment.
+# CHANGE: your seed command.
+DEV_UP_SEED_CMD='uv run python scripts/seed_demo.py'
+# Optional: SQL that returns a count. Above 0 means seeded. Without it, dev_up
+# records one finished seed in .dev_up/state. Make the seed write this row LAST.
+DEV_UP_SEED_PROBE_SQL="SELECT count(*) FROM projects WHERE name = 'Demo Seed Done'"
+
+# ── Checks ──────────────────────────────────────────────────────────────────
+# --check tests the API and the web app first, then runs this with the seed
+# environment. Use it for the check that matters most, such as "tenant A cannot
+# read tenant B". CHANGE: your command, or leave it empty.
+DEV_UP_CHECK_CMD='uv run python scripts/seed_demo.py --check'
+
+# ── Words after "Ready." ────────────────────────────────────────────────────
+DEV_UP_READY_NOTE="This stack has no keys. Mail, payments and model calls do not work here. Test those on staging."
