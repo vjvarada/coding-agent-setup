@@ -149,6 +149,39 @@ PREMERGE_MIGRATIONS_DIR='' run_pm "$REPO"
 check "an empty PREMERGE_MIGRATIONS_DIR skips the migration check" \
   "$([ $RC = 0 ] && has "$OUT" PASS; echo $?)" "rc=$RC $ERR"
 
+# 10. Both sides change one file (a clean merge with overlap). A test that fails
+#     only on the merge result blocks. One that fails alone too does not.
+overlap_repo() {
+  new_repo "$1"
+  git -C "$REPO" checkout -q main
+  commit_file "$REPO" shared.md "$(printf 'a\nb\nc\nd\ne')"
+  git -C "$REPO" push -q origin main
+  git -C "$REPO" checkout -q feat
+  git -C "$REPO" merge -q --ff-only main
+  commit_file "$REPO" shared.md "$(printf 'A\nb\nc\nd\ne')"
+  git -C "$REPO" checkout -q main
+  commit_file "$REPO" shared.md "$(printf 'a\nb\nc\nd\nE')"
+  git -C "$REPO" push -q origin main
+  git -C "$REPO" checkout -q feat
+}
+FAILS='echo "FAILED tests/t.py::test_a[x y] - boom"; exit 1'
+overlap_repo merged_only
+PREMERGE_AFFECTED_CMD="$FAILS" PREMERGE_RERUN_CMD=true run_pm "$REPO"
+check "a test that fails only when merged blocks, by name" \
+  "$([ $RC = 1 ] && has "$ERR" 'tests/t.py::test_a' && has "$ERR" 'pass on the branch alone'; echo $?)" "rc=$RC $ERR"
+check "the branch is checked out again after a block" \
+  "$([ "$(git -C "$REPO" symbolic-ref --short HEAD)" = feat ]; echo $?)"
+overlap_repo fails_alone
+H="$(head_of "$REPO")"
+PREMERGE_AFFECTED_CMD="$FAILS" PREMERGE_RERUN_CMD="$FAILS" run_pm "$REPO"
+check "a test that fails alone too does not block" \
+  "$([ $RC = 0 ] && has "$OUT" 'did not cause them' && has "$OUT" PASS; echo $?)" "rc=$RC $ERR"
+check "the worktree is as it was, on the branch" \
+  "$(undone "$REPO" "$H" && [ "$(git -C "$REPO" symbolic-ref --short HEAD)" = feat ]; echo $?)"
+overlap_repo unnamed
+PREMERGE_AFFECTED_CMD='echo boom; exit 2' PREMERGE_RERUN_CMD=true run_pm "$REPO"
+check "a run that names no test blocks" "$([ $RC = 1 ] && has "$ERR" 'no test is named'; echo $?)" "rc=$RC $ERR"
+
 echo
 echo "premerge.test: $PASS passed, $FAILED failed"
 if [ "$FAILED" -gt 0 ]; then

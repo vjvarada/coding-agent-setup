@@ -219,14 +219,22 @@ A duplicate id on `main` turns `main` red and blocks every deploy until someone 
 When the branch is behind `origin/main`, it:
 
 1. Refuses a new migration numbered at or below `main`'s highest.
-2. Merges `origin/main` into the worktree **without a commit**.
+2. Merges `origin/main` as a throwaway commit on a **detached HEAD**. Tests then see a clean, committed checkout.
 3. Runs the collision fences on that result.
-4. When both sides changed the same files, runs the affected tests too.
-5. Aborts the merge, so the worktree is as it was.
+4. When both sides changed the same files, runs the affected tests too. A test that fails there is re-run on the branch alone. **Only a test that passes alone and fails merged blocks.** A test that fails both ways is the machine or an older red.
+5. Goes back to the branch, so the worktree is as it was. No ref moves.
 
 Exit 0 means merge now. Exit 1 means merge `origin/main` into the branch, fix, push, and wait for CI. When the branch already contains `main`, it exits 0 at once.
 
-A squash merge lands the same tree that step 2 built. A pass tests what lands, with no second CI run. Keep the list of collision fences in the script (`FENCES=(...)`). Write `.premerge-fences` for your own project (see [`SETUP.md`](SETUP.md) §6b.3).
+A squash merge lands the same tree that step 2 built. A pass tests what lands, with no second CI run. Write `.premerge-fences` for your own project (see [`SETUP.md`](SETUP.md) §6b.3).
+
+**[Repo]** Three things the first version got wrong, found on its first live run:
+
+- Six tests failed on the Windows PC and passed in CI. Without the re-run in step 4, the overlap step always failed.
+- An uncommitted merge broke a test that compares a build SHA with `git rev-parse HEAD`. Hence the committed trial merge in step 2.
+- A test id with a space inside its parameter was cut short, and the re-run found nothing. Ids now compare at the function level.
+
+**Run it as `bash scripts/premerge.sh && gh pr merge <n> --squash`. Never pipe it.** With `premerge.sh | tail && gh pr merge`, the shell sees the exit code of `tail`, and the merge goes ahead after a FAIL. **[Repo]** This happened once, on the day the script shipped.
 
 ### Merge, do not rebase, a pushed branch
 

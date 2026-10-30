@@ -35,6 +35,11 @@
 #   .premerge-fences         the same list in a file, one per line, # comments.
 #   PREMERGE_AFFECTED_CMD    run when both sides changed a file. It sees
 #                            PREMERGE_BASE and PREMERGE_OVERLAP in its env.
+#                            Print failures as `FAILED <id>` or `ERROR <id>`
+#                            lines (pytest -rfE does) so a failure can be re-run.
+#   PREMERGE_RERUN_CMD       re-runs the failed ids on the branch alone. The ids
+#                            arrive as arguments. Only a test that fails merged
+#                            and passes alone blocks. (default: pytest -q -rfE)
 #   PREMERGE_SKIP_FETCH=1    do not fetch first (tests use this).
 # ════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -90,10 +95,18 @@ fi
 # ── 2. The trial merge ──────────────────────────────────────────────────────
 overlap="$(comm -12 <(git diff --name-only "$base" HEAD | sort) <(git diff --name-only "$base" "$BASE" | sort))"
 logs="$(mktemp -d)"
-# The trap undoes the trial merge on every exit, so a failure never leaves the
-# worktree half merged.
-trap 'git rev-parse -q --verify MERGE_HEAD >/dev/null && git merge --abort; rm -rf "$logs"; true' EXIT
-if ! git merge --no-commit --no-ff -q "$BASE" > "$logs/merge.log" 2>&1; then
+# The trial merge is a real commit on a DETACHED head, so tests see a clean,
+# committed checkout. An uncommitted merge broke a test that compares a build
+# SHA with `git rev-parse HEAD`. The trap aborts any merge and goes back to the
+# branch on every exit. The trial commit is left unreferenced. No ref moves.
+branch="$(git symbolic-ref -q --short HEAD)" || fail "HEAD is detached. Check out the PR branch first."
+back() {
+  git rev-parse -q --verify MERGE_HEAD >/dev/null && git merge --abort
+  [ "$(git symbolic-ref -q --short HEAD || true)" = "$branch" ] || git checkout -q "$branch"
+}
+trap 'back; rm -rf "$logs"; true' EXIT
+git checkout -q --detach
+if ! git merge --no-ff --no-edit -q "$BASE" > "$logs/merge.log" 2>&1; then
   conflicts="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
   if [ -z "$conflicts" ]; then
     # No conflicted path: git refused before it merged, most often because an
@@ -147,13 +160,36 @@ for f in "${fences[@]+"${fences[@]}"}"; do
 done
 
 # ── 4. Both sides changed the same files ───────────────────────────────────
+# A test that fails on the merge result is a merge failure only when it PASSES
+# on the branch alone (green alone, red together). A test that fails both ways
+# is this machine or an older red. On one Windows PC six tests failed locally
+# and passed in CI, so without this re-run the step always failed.
+RERUN_CMD="${PREMERGE_RERUN_CMD:-python -m pytest -q -p no:cacheprovider --continue-on-collection-errors -rfE}"
+# Ids at the function level: a parameter such as [a b] holds a space, and a cut
+# id selects nothing on the re-run.
+failed_ids() { { grep -E '^(FAILED|ERROR) ' "$1" || true; } | awk '{print $2}' | sed 's/\[.*//' | sort -u; }
+
 if [ -n "$overlap" ]; then
   say "both sides changed: $(printf '%s' "$overlap" | tr '\n' ' ')"
   if [ -n "${PREMERGE_AFFECTED_CMD:-}" ]; then
     say "running the affected tests on the merge result"
     if ! PREMERGE_BASE="$BASE" PREMERGE_OVERLAP="$overlap" bash -c "$PREMERGE_AFFECTED_CMD" > "$logs/affected.log" 2>&1; then
-      tail -20 "$logs/affected.log" >&2
-      fail "the affected tests fail on the merge result. Merge $BASE into the branch, fix, push, and wait for CI."
+      merged_fail="$(failed_ids "$logs/affected.log")"
+      if [ -z "$merged_fail" ]; then
+        tail -20 "$logs/affected.log" >&2
+        fail "the affected tests did not run cleanly on the merge result, and no test is named (log above)."
+      fi
+      back
+      # shellcheck disable=SC2086
+      bash -c "$RERUN_CMD \"\$@\"" _ $merged_fail > "$logs/rerun.log" 2>&1 || true
+      alone_fail="$(failed_ids "$logs/rerun.log")"
+      caused="$(comm -23 <(printf '%s\n' "$merged_fail") <(printf '%s\n' "$alone_fail"))"
+      if [ -n "$caused" ]; then
+        printf '  %s\n' $caused >&2
+        fail "these tests pass on the branch alone and fail once $BASE is merged in. Merge $BASE into the branch, fix, push, and wait for CI."
+      fi
+      say "these tests fail on the branch alone too, so the merge did not cause them (this machine, or already red):"
+      printf '  %s\n' $merged_fail
     fi
   else
     say "set PREMERGE_AFFECTED_CMD to run the affected tests here too."
