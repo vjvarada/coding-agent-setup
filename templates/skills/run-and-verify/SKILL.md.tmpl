@@ -1,0 +1,49 @@
+---
+name: run-and-verify
+description: >-
+  Launch {{name}} locally and verify a change end to end: install, start, smoke-check
+  the changed behaviour, run the test suite, then clean up. Use after any change with
+  a runtime surface, before reporting work as done, and whenever asked to run, start,
+  demo, smoke-test or screenshot the {{archetype_noun}}.
+when_to_use: "A change is ready to report; someone asks to run, start, demo or verify the {{archetype_noun}}."
+authority: write
+cost_tier: 0
+version: 1.0.0
+---
+
+# Run and verify {{name}}
+
+A green test suite is necessary, not sufficient (PLAYBOOK Principle 4). Drive the
+real flow, observe the behaviour, and quote the evidence. The verifier is never the
+implementer: when the dispatch loop is in use, `ws-verifier` re-runs this in a fresh
+context.
+
+## Commands
+
+{{commands_table}}
+
+## Smoke check — "is it up?"
+
+{{smoke_check}}
+
+## Verify a change
+
+1. **Affected tests first** — run the tests closest to what changed; fix before
+   going wider.
+2. **Start it** with a deadline, in the background if it is a server
+   ({{dev_cmd}}). Note the PID or job id so you can stop it.
+3. **Drive the changed flow** and observe: the request and its response, the CLI
+   output, the UI path (screenshot), the agent run's output file. Quote what you saw.
+4. **Full suite:** {{test_cmd}}.
+5. **Report BLUF:** `Verified: <evidence>` or `Not verified: <what blocked it>`.
+   Never write "should work".
+
+## Clean up after yourself
+
+Stop every process you started (servers, watchers, tunnels). Put a timeout on every
+command that could hang. Before your final message, list background jobs and stop
+the ones you own.
+
+## Learnings
+
+<!-- Dated, one line each, newest last: ports, flaky steps, slow paths, platform traps. -->

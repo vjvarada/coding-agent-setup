@@ -1,0 +1,208 @@
+{
+  "_doc": "Archetypes the scaffolder knows. Each gives DEFAULTS the intake can override: capabilities, DOX scopes, constraints, owner gates, the smoke check, an AGENTS.md section, and extra template layers. Pick the closest; 'other' is a valid answer. Add one by appending an entry and a case in scaffold/tests/test_scaffold.py (CONTRIBUTING.md).",
+  "base": {
+    "constraints": [
+      "No secrets in source or in committed files: configuration comes from environment variables or a secret store, and `.env` is gitignored.",
+      "Every behaviour change ships with a test that fails without it; a rule that cannot be tested is labelled advisory.",
+      "New work lands in its architectural home (Place Before Building); a second implementation of an existing seam is a defect."
+    ],
+    "gates": [
+      "Push to `main`, force-push, or rewrite published history",
+      "Deploy to production or change production infrastructure",
+      "Spend money or create paid resources (API credits at scale, cloud resources)",
+      "Send email, messages or posts to real people, or call third-party write APIs outside a sandbox",
+      "Delete data or resources the session did not create",
+      "Write or rotate credentials, or change who has access"
+    ]
+  },
+  "archetypes": {
+    "web-app": {
+      "title": "Web application",
+      "noun": "app",
+      "description": "A browser UI plus a server: pages, an HTTP API, auth, persistence.",
+      "suggested_stacks": ["nextjs", "vite-react", "fastapi", "node-ts"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": true},
+      "scopes": [
+        {"path": "apps/web", "title": "Web UI", "covers": "The browser UI: pages, components, client state, styling.", "not_owns": "server logic, data access, secrets (apps/api)"},
+        {"path": "apps/api", "title": "API server", "covers": "The server: HTTP routes, auth, domain logic, data access, background jobs.", "not_owns": "presentation (apps/web)"},
+        {"path": "packages", "title": "Shared packages", "covers": "Libraries used by more than one app: types, clients, utilities.", "not_owns": "anything only one app uses (keep it in that app)"}
+      ],
+      "constraints": [
+        "Access control is decided on the server; the client is never trusted for who may see or change what.",
+        "Every API route has a test that calls it; every user-visible flow has one end-to-end check."
+      ],
+      "gates": ["Run a database migration against a shared or production database"],
+      "smoke_check": "TODO(scaffold): the URL and the text that proves the app is up, e.g. start the dev server, then `curl -sf http://localhost:3000/ | grep -q '<title>'`. For a UI change, also take a screenshot of the changed page.",
+      "section": "\n## Architecture Notes\n\n- UI and server are separate scopes even inside one framework: data access and secrets never live in client components.\n- Migrations are expand/contract and forward-only (DELIVERY.md §10).\n- Risk tier HIGH: auth, payments, migrations, tenancy, deploy config.\n"
+    },
+    "api-service": {
+      "title": "API / backend service",
+      "noun": "service",
+      "description": "A headless service: HTTP or RPC API, workers, persistence.",
+      "suggested_stacks": ["fastapi", "node-ts", "go", "dotnet-webapi", "rust"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": true},
+      "scopes": [
+        {"path": "src", "title": "Service source", "covers": "Routes/handlers, domain logic, data access, background workers.", "not_owns": "tests (tests/), deploy config"},
+        {"path": "tests", "title": "Tests", "covers": "Unit, integration and contract tests; fixtures.", "not_owns": "production code"}
+      ],
+      "constraints": [
+        "Every endpoint has a test that calls it, including its error paths.",
+        "Handlers stay thin: domain logic lives in modules a test can call without HTTP."
+      ],
+      "gates": ["Run a database migration against a shared or production database"],
+      "smoke_check": "TODO(scaffold): the health check, e.g. start the service, then `curl -sf http://localhost:8000/health` → `{\"ok\": true}`.",
+      "section": "\n## Architecture Notes\n\n- Migrations are expand/contract and forward-only (DELIVERY.md §10).\n- Risk tier HIGH: auth, money, tenancy, migrations, deploy path.\n"
+    },
+    "cli": {
+      "title": "Command-line tool",
+      "noun": "CLI",
+      "description": "A command-line program: argument parsing, commands, output.",
+      "suggested_stacks": ["python-uv-app", "go", "rust", "node-ts"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [
+        {"path": "src", "title": "CLI source", "covers": "Argument parsing (thin) and the command implementations (testable without a shell).", "not_owns": "tests (tests/)"},
+        {"path": "tests", "title": "Tests", "covers": "Unit tests of commands and end-to-end runs of the binary on fixtures.", "not_owns": "production code"}
+      ],
+      "constraints": [
+        "`--help` works for every command; exit codes are documented and non-zero on failure.",
+        "Output meant for scripts is stable (JSON or a documented format); human output may change."
+      ],
+      "gates": ["Publish a release to a package registry"],
+      "smoke_check": "TODO(scaffold): the commands that prove it works, e.g. `<cli> --help` exits 0 and `<cli> <command> <fixture>` prints the expected line.",
+      "section": ""
+    },
+    "library": {
+      "title": "Library / SDK",
+      "noun": "library",
+      "description": "A reusable package other code imports: a public API, versioned releases.",
+      "suggested_stacks": ["python-uv-lib", "node-ts", "rust", "go"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [
+        {"path": "src", "title": "Library source", "covers": "The public API and its internals.", "not_owns": "tests, examples"},
+        {"path": "tests", "title": "Tests", "covers": "Tests of the public API (behaviour, not internals).", "not_owns": "production code"}
+      ],
+      "constraints": [
+        "The public API is explicit; a breaking change bumps the major version and is listed in the changelog.",
+        "Every public function has a test and a docstring example that runs."
+      ],
+      "gates": ["Publish a release to a package registry"],
+      "smoke_check": "TODO(scaffold): a snippet that imports the package and calls one public function, with its expected output.",
+      "section": ""
+    },
+    "data-pipeline": {
+      "title": "Data / ML pipeline",
+      "noun": "pipeline",
+      "description": "Batch or scheduled jobs that extract, transform, train or report.",
+      "suggested_stacks": ["python-uv-app"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [
+        {"path": "src", "title": "Pipeline source", "covers": "One module per pipeline step; each step reads a declared input and writes a declared output.", "not_owns": "data files, notebooks for exploration"},
+        {"path": "tests", "title": "Tests", "covers": "Step tests on small fixtures; one end-to-end run on a sample dataset.", "not_owns": "production code"}
+      ],
+      "constraints": [
+        "Steps are deterministic and idempotent: the same input gives the same output, and a re-run is safe.",
+        "Raw data and large artifacts are never committed; the pipeline records where they came from."
+      ],
+      "gates": ["Write to a production database, warehouse or bucket", "Start a paid compute job (GPU, cluster)"],
+      "smoke_check": "TODO(scaffold): run the pipeline on the sample fixture and check the output, e.g. the output file exists and has N rows.",
+      "section": "\n## Architecture Notes\n\n- DOE applies directly: each step is a deterministic script with a declared input and output; the agent orchestrates and judges.\n- Small run first: every step accepts a limit or sample flag.\n"
+    },
+    "agent": {
+      "title": "Custom agent (DOE harness)",
+      "noun": "agent",
+      "description": "An agent that does a specific job: skills (directive + scripts) orchestrated by an LLM, with run records and self-annealing. Runs in the IDE (Claude Code / Copilot) or on CommandCenter.",
+      "suggested_stacks": ["doe-agent"],
+      "capabilities": {"graphify": false, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [
+        {"path": ".github/skills", "title": "Skills", "covers": "One folder per capability: SKILL.md (the directive) + scripts/ (execution) + tests/.", "not_owns": "code shared by 2+ skills (.tmp/scripts/), reference data (agent-data/)", "rules": ["Create skills with `skill-authoring`; never hand-write a proxy in .claude/skills/.", "A skill's Definition of Done is checkable by a command."]},
+        {"path": ".tmp/scripts", "title": "Shared utilities", "covers": "Python modules used by two or more skills (on PYTHONPATH in hosted runs).", "not_owns": "single-skill code (stays in the skill), one-off scratch (rest of .tmp/)", "rules": ["Every module here has a test: two skills break when it does."]},
+        {"path": "agent-data", "title": "Reference data", "covers": "Permanent assets the agent reads: catalogs, templates, specs, images.", "not_owns": "user uploads (inputs/), run results (outputs/)", "rules": ["Every asset is listed in INDEX.md."]}
+      ],
+      "constraints": [
+        "Never fabricate: the agent reports only what its scripts and sources returned.",
+        "Skills with `authority: external` or `cost_tier` 2+ run `--dry-run` first and need the user's go-ahead.",
+        "Every run leaves a record in outputs/<run-slug>/ (run_store.py)."
+      ],
+      "gates": [],
+      "smoke_check": "Run one skill on a small sample from `inputs/` and check its record: `python .tmp/scripts/run_store.py list` shows the run with status `success`, and its step files hold the expected fields. TODO(scaffold): name the sample input and the expected output once the first skill exists.",
+      "layers": ["agent"],
+      "runtime_layers": {"commandcenter": ["agent-commandcenter"]}
+    },
+    "mobile-app": {
+      "title": "Mobile app",
+      "noun": "app",
+      "description": "An iOS/Android app, optionally with a backend.",
+      "suggested_stacks": ["flutter", "expo"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [
+        {"path": "src", "title": "App source", "covers": "Screens, components, state, platform integrations.", "not_owns": "native build config, backend"}
+      ],
+      "constraints": [
+        "Every screen handles loading, empty and error states.",
+        "Secrets never ship in the app bundle; the backend holds them."
+      ],
+      "gates": ["Submit a build to an app store or a public test track"],
+      "smoke_check": "TODO(scaffold): build and launch on an emulator/simulator, open the changed screen, and save a screenshot.",
+      "section": ""
+    },
+    "desktop-app": {
+      "title": "Desktop app",
+      "noun": "app",
+      "description": "A desktop application (Tauri, Electron, native).",
+      "suggested_stacks": ["tauri", "dotnet-webapi"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [
+        {"path": "src", "title": "App source", "covers": "UI and app logic.", "not_owns": "native shell / packaging config"}
+      ],
+      "constraints": ["The app starts with no network; features that need it fail with a clear message."],
+      "gates": ["Publish a signed release or an auto-update"],
+      "smoke_check": "TODO(scaffold): launch the dev build, check the window opens on the expected screen, and save a screenshot.",
+      "section": ""
+    },
+    "firmware": {
+      "title": "Embedded firmware",
+      "noun": "firmware",
+      "description": "Firmware for a microcontroller (PlatformIO, ESP-IDF, Zephyr).",
+      "suggested_stacks": ["platformio"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [
+        {"path": "src", "title": "Firmware source", "covers": "Application code and drivers.", "not_owns": "board config (platformio.ini), host-side tools"},
+        {"path": "test", "title": "Tests", "covers": "Native (host) unit tests and on-target tests.", "not_owns": "production code"}
+      ],
+      "constraints": [
+        "Logic that can run on the host has a native unit test; hardware access sits behind a thin interface.",
+        "No blocking calls in interrupt handlers; timing assumptions are written next to the code."
+      ],
+      "gates": ["Flash a device that is in the field or connected to real equipment"],
+      "smoke_check": "TODO(scaffold): build (`pio run`), run native tests, and if a board is attached, flash and read the boot line from the serial monitor.",
+      "section": ""
+    },
+    "monorepo": {
+      "title": "Monorepo (several apps and packages)",
+      "noun": "system",
+      "description": "Several deployable apps and shared packages in one repository.",
+      "suggested_stacks": ["node-ts", "python-uv-app"],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": true},
+      "scopes": [
+        {"path": "apps", "title": "Apps", "covers": "Deployable units, one folder each, each with its own AGENTS.md.", "not_owns": "code shared by two apps (packages/)"},
+        {"path": "packages", "title": "Packages", "covers": "Libraries shared by more than one app.", "not_owns": "app-specific code"}
+      ],
+      "constraints": ["An app never imports another app; shared code moves to packages/."],
+      "gates": ["Run a database migration against a shared or production database"],
+      "smoke_check": "TODO(scaffold): the per-app smoke checks (one line each).",
+      "section": ""
+    },
+    "other": {
+      "title": "Other",
+      "noun": "project",
+      "description": "Anything else: the agent defines scopes from the intake.",
+      "suggested_stacks": [],
+      "capabilities": {"graphify": true, "rtk": true, "loop": true, "delivery": false},
+      "scopes": [],
+      "constraints": [],
+      "gates": [],
+      "smoke_check": "TODO(scaffold): the one observable check that proves the project works.",
+      "section": ""
+    }
+  }
+}

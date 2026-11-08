@@ -1,0 +1,4 @@
+python-dotenv
+requests
+pytest>=8
+pytest-asyncio>=0.24

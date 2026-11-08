@@ -43,9 +43,23 @@ proven on a real change.
      and the downstream agents parse it.
    - A new owner gate → `templates/claude/plan-guard.config.json` **and** a case
      in `plan-guard.test.mjs`. An untested gate is a guess; ship both or neither.
-3. **Keep the installers idempotent and non-destructive.** They must merge into
-   existing config, never overwrite, and no-op what's already present. Test a
-   re-run: running twice must be a clean no-op.
+   - Something every scaffolded project should get → `templates/project/` (base
+     harness), `templates/skills/` (a core skill), or `templates/agent/` (the DOE
+     agent archetype), plus `scaffold/scaffold.py` if it needs new context keys or
+     a new required path, plus a case in `scaffold/tests/test_scaffold.py`.
+   - A new archetype or stack recipe → an entry in `scaffold/catalog/archetypes.json`
+     or `stacks.json`. The kit tests scaffold every archetype automatically; check a
+     stack's `init` flags against the tool's current `--help` before adding it.
+   - A lesson a scaffolded project learned (its `docs/lessons.md`) that would help
+     every project → the owning kit template, then note it in the project's lesson
+     as "applied upstream". Existing projects receive it via `scaffold.py upgrade`.
+   - Something about the DOE method → `DOE.md`.
+3. **Keep the installers and the scaffolder idempotent and non-destructive.** They
+   must merge into existing config, never overwrite, and no-op what's already
+   present. Test a re-run: running twice must be a clean no-op. Run the kit tests:
+   `python -m unittest discover -s scaffold/tests`, every
+   `node templates/claude/hooks/*.test.mjs`, and `bash templates/scripts/premerge.test.sh`
+   (CI runs them on Linux and Windows).
 4. **Keep host-agnostic.** State per-host differences explicitly (Claude Code vs
    Copilot Chat vs Copilot CLI vs other MCP hosts) rather than assuming one.
 5. **Open a PR** with the evidence from step 1 in the description.

@@ -1,0 +1,14 @@
+# Search-noise skip list for ripgrep and Claude Code's Grep/Glob (ported from
+# Metorite). Git still tracks these; agents just stop wading through them.
+# Add the generated, vendored and fixture files of this project.
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+uv.lock
+poetry.lock
+Cargo.lock
+*.min.js
+*.min.mjs
+*.map
+graphify-out/
+.harness/manifest.json

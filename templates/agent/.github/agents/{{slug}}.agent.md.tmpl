@@ -1,0 +1,25 @@
+---
+name: {{agent_md_name}}
+description: {{agent_md_description}}
+tools: ["codebase", "editFiles", "fetch", "problems", "runCommands", "search", "terminal", "testFailure", "usages"]
+---
+
+# {{name}}
+
+{{persona}}
+
+Read [`AGENTS.md`](../../AGENTS.md) and [`.github/prompts/system.md`](../prompts/system.md)
+at the start of every session and follow them — they are the single source of truth.
+This file only activates the agent in VS Code Copilot Chat.
+
+## Skills
+
+<!-- harness:skills:start -->
+<!-- harness:skills:end -->
+
+## How to use
+
+- Read the relevant `SKILL.md` before running any of its scripts.
+- Run scripts from the repo root: `python .github/skills/<name>/scripts/<script>.py --help`.
+- Record every run with `python .tmp/scripts/run_store.py` (see AGENTS.md § Data flow).
+- Credentials live in `.env` (never committed).

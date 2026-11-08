@@ -1,0 +1,17 @@
+{
+  "_harness_note": "Merged by coding-agent-setup's scaffolder. The SessionStart hook prints harness status (unfinished scaffold markers, OPEN lessons, skill-proxy drift) and is silent when there is nothing to say. python3 first, python as the fallback (Windows).",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.harness/harness.py\" session-start 2>/dev/null || python \"${CLAUDE_PROJECT_DIR}/.harness/harness.py\" session-start",
+            "timeout": 20,
+            "statusMessage": "harness: checking workspace status"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,24 @@
 {
-  "description": "RTK (Rust Token Killer) PreToolUse hook compresses noisy shell output (pytest/ruff/git/docker/...) before it reaches the agent context. Scoped by an allowlist in .claude/hooks/rtk-bash.sh; skips `uv run` and file reads. Requires `rtk` on PATH; no-ops silently if absent. plan-guard.mjs enforces the owner gates declared in .claude/plan-guard.config.json — the boundary that makes an unattended dispatch loop safe; keep it in sync with the work plan's owner-gate section and test it with `node .claude/hooks/plan-guard.test.mjs`.",
+  "description": "RTK (Rust Token Killer) PreToolUse hook compresses noisy shell output (pytest/ruff/git/docker/...) before it reaches the agent context. Scoped by an allowlist in .claude/hooks/rtk-bash.sh; skips `uv run` and file reads. Requires `rtk` on PATH; no-ops silently if absent. settings.loop.json (merged by the Loop step) registers plan-guard.mjs, which enforces the owner gates declared in .claude/plan-guard.config.json — the boundary that makes an unattended dispatch loop safe; keep it in sync with the work plan's owner-gate section and test it with `node .claude/hooks/plan-guard.test.mjs`. SessionStart: session-handoff.mjs injects the open HANDOFF.md entries; worktree-notice.mjs says whether the session has its own worktree and whether its rules are behind origin/main. Stop: stop-children.mjs lists long-running child processes the session left behind (reports, never kills). All informational hooks fail open; every hook has a *.test.mjs that CI runs.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-handoff.mjs\"",
+            "timeout": 10,
+            "statusMessage": "handoff: loading pending work"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/worktree-notice.mjs\"",
+            "timeout": 10,
+            "statusMessage": "worktree: checking session isolation"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -12,15 +30,16 @@
             "statusMessage": "rtk: compressing output"
           }
         ]
-      },
+      }
+    ],
+    "Stop": [
       {
-        "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/plan-guard.mjs\"",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-children.mjs\"",
             "timeout": 10,
-            "statusMessage": "plan-guard: checking owner gates"
+            "statusMessage": "cleanup: listing old child processes"
           }
         ]
       }

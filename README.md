@@ -1,78 +1,103 @@
 # coding-agent-setup
 
-**A portable, self-installing kit that sets up any complex codebase for
-token-efficient, high-velocity development by coding agents.**
+**A self-installing kit that scaffolds any new software project or custom agent as an
+agent-ready workspace — or retrofits an existing codebase — so coding agents can build
+it fast, cheaply and safely.**
 
-Point a coding agent (Claude Code, GitHub Copilot, Cursor, or any MCP-capable
-host) at [`SETUP.md`](SETUP.md) and it installs and wires up the systems that
-make large, unfamiliar codebases cheap and fast to work on:
+> **Agent, start here.** The user gave you this repo's link:
+> - **Empty or new folder** (a new project, or "create an agent that …") → read
+>   [`SCAFFOLD.md`](SCAFFOLD.md) and execute it.
+> - **Existing codebase** → read [`SETUP.md`](SETUP.md) and execute it.
+>
+> Clone this kit to a temporary folder *outside* the project; never commit it into
+> the project.
 
-- **[Graphify](https://github.com/Graphify-Labs/graphify)** — a local
-  tree-sitter code knowledge graph (with an optional MCP server). One
-  `graphify query` replaces the grep→read→re-read loop that burns the most
-  tokens on big repos.
-- **RTK (Rust Token Killer)** — filters noisy shell output (tests, lint, git,
-  docker) by 60–90% before it reaches the model's context.
-- **Review + verify discipline** — adversarial review and end-to-end
-  verification that catch the plausible-but-wrong changes shallow checks miss.
-- **Project instructions + DOX contract** — encode the repo's conventions once,
-  then a hierarchy of per-directory `AGENTS.md` contracts that tells the agent
-  what each directory owns and *where a new feature belongs* — so work lands in
-  the right architectural layer instead of wherever a file was already open.
-- **Planning + multi-agent orchestration** — a supervisor-worker loop that takes a
-  goal to merged PRs: decompose → wireframe → spec → audit, then dispatch →
-  build → verify → review. The plan lives in the repo as a dispatch board, the
-  owner gates live in a hook that enforces them deterministically, and the loop
-  stops at "PR opened" so merge and deploy stay human.
-- **Delivery** — the path from "slice built" to "in production": a one-command
-  local stack per worktree, risk-tiered review, a premerge check against today's
-  `main`, staging plus a daily release train, and an optional dated owner-grant
-  window. Run it before you push, test the merge, and verify by evidence.
+## What you get
+
+A scaffolded workspace is built on **DOE** — *directives* (SOPs as `SKILL.md`) say
+what, the *orchestrating* LLM judges and routes, *execution* scripts do the work — and
+on the engineering disciplines in [`PLAYBOOK.md`](PLAYBOOK.md):
+
+- **The project's own skeleton**, from its stack's official generator (Next.js, Vite,
+  uv, Cargo, Go, .NET, Flutter, Expo, Tauri, PlatformIO, …) — or the DOE agent layout
+  for an agent.
+- **A DOX architecture contract** — a root `AGENTS.md` every agent host reads, with
+  constraints, owner gates, a skills table and a child index, plus one `AGENTS.md` per
+  scope, so new work lands in the right layer (*place before building*).
+- **A skill harness** — canonical skills in `.github/skills/` (directive + scripts +
+  tests), generated proxies for Claude Code, and three core skills in every project:
+  `self-annealing` (lessons → skills, with a session-end gate), `skill-authoring`
+  (add capability the DOE way), `run-and-verify` (run *this* project and prove a
+  change works).
+- **A custom-agent archetype** — persona, runtime system prompt, Copilot agent,
+  `inputs/` → `outputs/<run>/` run records, "never fabricate" and dry-run-before-
+  external rules; optional CommandCenter runtime (`agents.py` + `config.json`).
+- **Session continuity** — `HANDOFF.md` with a Check per entry, injected at session
+  start; a stale-rules and worktree notice; a leftover-process report at stop.
+- **Guardrails and CI** — owner gates enforced by a hook (`plan-guard`), harness CI
+  (contracts, skills, proxies, ignore traps, hook tests), a secret scan of new
+  commits, a PR template that requires verification evidence, a review-cadence
+  reminder.
+- **The token and delivery tools** — Graphify (code knowledge graph), RTK (output
+  compression), the planning/dispatch loop (plan → spec → audit → build → verify →
+  review → PR), and Delivery (one-command local stack, premerge, worktrees).
+- **A way to stay current** — `scaffold.py upgrade` brings kit improvements into a
+  project without touching the files it has edited.
 
 ## Quickstart
 
-**For an agent:** read [`SETUP.md`](SETUP.md) and execute it.
+**For an agent:** follow [`SCAFFOLD.md`](SCAFFOLD.md) (new) or [`SETUP.md`](SETUP.md) (existing).
 
 **For a human:**
+
 ```bash
-# from your target repo's root
-bash /path/to/coding-agent-setup/install.sh       # macOS / Linux / Git-Bash
-pwsh /path/to/coding-agent-setup/install.ps1       # Windows PowerShell
+git clone --depth 1 https://github.com/vjvarada/coding-agent-setup /tmp/coding-agent-setup
+python /tmp/coding-agent-setup/scaffold/scaffold.py list                      # archetypes and stacks
+python /tmp/coding-agent-setup/scaffold/scaffold.py intake-template --archetype agent --out intake.json
+#   … fill in intake.json …
+python /tmp/coding-agent-setup/scaffold/scaffold.py new --intake intake.json --target my-project
+python /tmp/coding-agent-setup/scaffold/scaffold.py install --target my-project   # Graphify, RTK, loop, delivery
+python my-project/.harness/harness.py check --strict
 ```
-The installers are idempotent and non-destructive — they merge into existing
-config, never overwrite, and no-op anything already installed.
+
+The intake interview is the part an agent does best — the fastest path is to open a
+coding agent in an empty folder and say: *"Use https://github.com/vjvarada/coding-agent-setup
+to scaffold this project: <one sentence>."*
+
+Retrofit an existing repo instead: `bash install.sh` / `pwsh install.ps1` from its root.
 
 ## What's here
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| [`SETUP.md`](SETUP.md) | **Agent-facing** step-by-step auto-install playbook |
-| [`PLAYBOOK.md`](PLAYBOOK.md) | The **methodology** — why these tools, the principles behind them, hard-won lessons |
-| [`ORCHESTRATION.md`](ORCHESTRATION.md) | **Multi-agent planning + dispatch** — the two loops, the seven roles, where wireframes and evals fit, what stays human, and what it costs |
-| [`DELIVERY.md`](DELIVERY.md) | **Delivery** (capability #6) — local-first inner loop, risk tiers, two-speed delivery, premerge, staging and the release train, owner-grant window, task-board protocol, and how to measure your own speed |
-| [`HARNESS-PRACTICES.md`](HARNESS-PRACTICES.md) | Harder harness practices (tool risk annotations, fail-closed permissions, trajectory evals, prompt-cache discipline, CI gates) for keeping a codebase agent-developable over time |
-| [`install.sh`](install.sh) / [`install.ps1`](install.ps1) | Runnable installers (Unix / Windows) |
-| [`templates/`](templates/) | Ready-to-copy config for Claude Code + VS Code Copilot |
-| [`templates/scripts/`](templates/scripts/) | Delivery scripts: `dev_up.sh` (local stack), `premerge.sh`, `worktree.sh` |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How we push new learnings back into this kit |
+| [`SCAFFOLD.md`](SCAFFOLD.md) | **Agent-facing**: scaffold a new project or custom agent from an empty folder |
+| [`SETUP.md`](SETUP.md) | **Agent-facing**: retrofit an existing codebase |
+| [`DOE.md`](DOE.md) | The **DOE method** — skills, one harness for many hosts, self-annealing, memory, the agent archetype, provenance |
+| [`PLAYBOOK.md`](PLAYBOOK.md) | The **principles** — why these tools and disciplines, with the cases that taught them |
+| [`ORCHESTRATION.md`](ORCHESTRATION.md) | Multi-agent planning and dispatch: the two loops, the seven roles, what stays human |
+| [`DELIVERY.md`](DELIVERY.md) | From "slice built" to "in production": local stack, premerge, staging, release train, task board |
+| [`HARNESS-PRACTICES.md`](HARNESS-PRACTICES.md) | Harder practices: risk annotations, fail-closed permissions, trajectory evals, cache discipline |
+| [`scaffold/`](scaffold/) | `scaffold.py` (new · install · upgrade), the archetype and stack catalogs, example intakes, kit tests |
+| [`templates/`](templates/) | Everything the scaffolder and installers lay down: `project/` (base harness), `skills/` (core skills), `agent/` + `agent-commandcenter/` (DOE agent), `claude/` + `copilot/` (host config, hooks, subagents), `shared/` (DOX, plan, spec, handoff), `scripts/` (delivery) |
+| [`install.sh`](install.sh) / [`install.ps1`](install.ps1) | Capability installers (Unix / Windows), idempotent and non-destructive |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How learnings land in this kit |
 
 ## Host support
 
-Works across Claude Code, VS Code GitHub Copilot (Chat + CLI), Cursor, and other
-MCP hosts. Each capability degrades gracefully where a host lacks it — see the
-support matrix in [`SETUP.md §8`](SETUP.md). Two platform gaps worth knowing:
-VS Code Copilot **Chat** cannot transparently rewrite shell commands from a hook,
-so RTK there works via an instruction nudge instead of a silent rewrite; and
-hosts without subagents run the orchestration loop as sequential roles in fresh
-sessions rather than as parallel agents.
+Works across Claude Code, VS Code GitHub Copilot (Chat + CLI), Cursor, Codex and other
+AGENTS.md-aware hosts. Each capability degrades gracefully where a host lacks it — see
+[`SETUP.md §8`](SETUP.md). Hooks, subagents and slash commands need Claude Code; on
+other hosts the same skills and contracts apply, and the loop runs as sequential roles.
 
 ## Origin
 
-Distilled from real work on a large multi-agent platform running two agent
-runtimes side by side — the kind of codebase where naive exploration is
-ruinously expensive. Every principle in `PLAYBOOK.md` was learned by hitting the
-problem it solves. This kit is a living document: as we learn things that make
-development faster, better, or cheaper, they land here.
+Distilled from three sources of hard-won practice: the DOE Framework for Agentic AI
+(agent workspaces that self-anneal), a large multi-agent production platform with two
+agent runtimes (where naive exploration is ruinously expensive), and this kit's own
+use. Every principle in `PLAYBOOK.md` was learned by hitting the problem it solves.
+This kit is a living document: when we learn something that makes development faster,
+better or cheaper, it lands here — and `scaffold.py upgrade` carries it into existing
+projects.
 
 ## License
 

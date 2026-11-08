@@ -1,0 +1,22 @@
+{
+  "_guide": "Example intake for a web app. Scopes were chosen AFTER running the stack generator, to match the tree it produced (SCAFFOLD.md step 4).",
+  "name": "Field Service Scheduler",
+  "summary": "A web app where a dispatcher assigns service jobs to technicians and technicians see their day on a phone.",
+  "owner": "Vijay",
+  "archetype": "web-app",
+  "stack": "nextjs",
+  "hosts": ["claude-code", "copilot"],
+  "scopes": [
+    {"path": "src/app", "title": "Routes and pages", "covers": "Next.js App Router pages, layouts and route handlers (the HTTP API under src/app/api).", "not_owns": "domain logic and data access (src/lib)", "rules": ["Route handlers stay thin: parse, call src/lib, respond.", "Every route handler has a test under src/app/**/__tests__."]},
+    {"path": "src/components", "title": "UI components", "covers": "Reusable React components and their stories.", "not_owns": "data fetching (pages) and domain rules (src/lib)", "rules": ["Components are presentational; they receive data as props."]},
+    {"path": "src/lib", "title": "Domain and data", "covers": "Scheduling rules, data access, auth helpers. Server-only.", "not_owns": "presentation", "rules": ["Never import from src/components.", "Unit-test every scheduling rule with vitest."]}
+  ],
+  "brief": {
+    "problem": "Dispatchers plan the day on a whiteboard and call each technician, so changes are lost and customers wait.",
+    "users": "Dispatchers (desktop) and field technicians (phone).",
+    "goals": ["A dispatcher can assign a job to a technician and see conflicts", "A technician sees today's jobs in order"],
+    "non_goals": ["Billing", "Route optimisation"],
+    "success": ["An end-to-end test assigns a job and the technician view shows it", "Assigning two overlapping jobs to one technician shows a conflict"]
+  },
+  "constraints": ["Technicians see only their own jobs; checked on the server."]
+}

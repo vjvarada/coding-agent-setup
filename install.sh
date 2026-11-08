@@ -29,12 +29,18 @@ skip() { printf '\033[1;33m skip \033[0m %s\n' "$*"; }
 warn() { printf '\033[1;31m warn \033[0m %s\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# JSON deep-merge helper (python is near-universal; jq optional).
+# JSON deep-merge helper (python is near-universal; jq optional). macOS ships
+# `python3` but no `python`, so prefer python3.
+PYTHON="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)"
 # merge_json <target-file> <json-to-merge>  — adds missing keys; appends missing
 # list items (so a second hook lands next to an existing one). Never clobbers.
 merge_json() {
   local target="$1" addition="$2"
-  python - "$target" "$addition" <<'PY'
+  if [ -z "$PYTHON" ]; then
+    warn "no python3/python on PATH: could not merge into $target (install Python 3, re-run)"
+    return 1
+  fi
+  "$PYTHON" - "$target" "$addition" <<'PY'
 import json, sys, os
 target, addition = sys.argv[1], sys.argv[2]
 add = json.loads(addition)
@@ -140,13 +146,24 @@ else
   # Its optional MCP server needs graphifyy[mcp] importable from `python`, so it
   # is left as a manual step — see SETUP.md §2 and templates/*/mcp.json.
 
-  # -- Claude Code: RTK hook + settings (settings also registers plan-guard) --
+  # -- Claude Code: RTK hook, session hooks (handoff queue, worktree/stale-rules
+  #    notice, leftover-process report), /handoff, and the settings that register
+  #    them. plan-guard is registered by the Loop step, next to its script. --
   if [ -f "$TEMPLATES/claude/hooks/rtk-bash.sh" ]; then
-    mkdir -p .claude/hooks
+    mkdir -p .claude/hooks .claude/commands
     cp "$TEMPLATES/claude/hooks/rtk-bash.sh" .claude/hooks/rtk-bash.sh
     chmod +x .claude/hooks/rtk-bash.sh
-    merge_json ".claude/settings.json" "$(cat "$TEMPLATES/claude/settings.json")" >/dev/null 2>&1
-    ok ".claude/ RTK hook + settings"
+    for h in session-handoff worktree-notice stop-children; do
+      for f in "$h.mjs" "$h.test.mjs"; do
+        [ -f ".claude/hooks/$f" ] || cp "$TEMPLATES/claude/hooks/$f" ".claude/hooks/$f"
+      done
+    done
+    [ -f .claude/commands/handoff.md ] || cp "$TEMPLATES/claude/commands/handoff.md" .claude/commands/handoff.md
+    if merge_json ".claude/settings.json" "$(cat "$TEMPLATES/claude/settings.json")" >/dev/null; then
+      ok ".claude/ RTK hook + session hooks + /handoff + settings"
+    else
+      warn "hooks copied, but .claude/settings.json was NOT updated — they will not run until it is"
+    fi
   fi
 
   # -- Copilot instructions: append RTK block if absent --
@@ -203,6 +220,11 @@ else
     if [ -f ".claude/hooks/$f" ]; then skip ".claude/hooks/$f exists"
     else cp "$TEMPLATES/claude/hooks/$f" ".claude/hooks/$f"; ok ".claude/hooks/$f"; fi
   done
+  # Register plan-guard only here, next to its script: a repo without the loop
+  # must never carry a hook whose script is absent (it would error on every call).
+  merge_json ".claude/settings.json" "$(cat "$TEMPLATES/claude/settings.loop.json")" >/dev/null 2>&1 \
+    && ok ".claude/settings.json registers plan-guard" \
+    || warn "could not merge settings.loop.json into .claude/settings.json"
 
   if [ -f .claude/plan-guard.config.json ]; then
     skip "plan-guard.config.json exists (your gates left untouched)"

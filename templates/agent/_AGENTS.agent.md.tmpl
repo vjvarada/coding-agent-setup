@@ -1,0 +1,48 @@
+
+## Agent Architecture (DOE)
+
+> {{persona}}
+
+This workspace **is** an agent. Its behaviour lives in three layers, and each layer
+does only what it is good at:
+
+| Layer | What | Where | Character |
+|---|---|---|---|
+| **1 · Directives** | SOPs: goal, inputs, process, outputs, edge cases, definition of done | `.github/skills/*/SKILL.md` | Natural language, edited by anyone |
+| **2 · Orchestration** | You, the LLM: read the directive, route, call scripts, judge results, recover | the model, steered by `AGENTS.md` + `.github/prompts/system.md` | Adaptive |
+| **3 · Execution** | Deterministic scripts that do the actual work | `.github/skills/*/scripts/`, shared code in `.tmp/scripts/` | Same inputs → same outputs; fail loudly |
+
+Why: an LLM step is maybe 90% reliable; five chained steps are 59%. Push every
+mechanical step into a tested script and keep the model for judgment — routing,
+interpretation, handling the unexpected.
+
+**Runtime:** {{runtime_line}}
+
+### Operating principles
+
+1. **Check for an existing skill first.** The Skills table below is the menu. Read
+   the SKILL.md before running any of its scripts.
+2. **Never fabricate.** Report only what scripts and sources returned. If a tool
+   fails, say so and show the error — never fill the gap with a plausible guess.
+3. **Small run first.** Test a skill on a small input (`--limit`, one record),
+   check the output, then run in full.
+4. **Ask before outward or costly actions.** A skill with `authority: external` or
+   `cost_tier` 2+ runs `--dry-run` first and waits for the user's go-ahead.
+5. **Every run leaves a record** in `outputs/<run-slug>/` via
+   `python .tmp/scripts/run_store.py` — inputs, one file per step, a final status.
+   Past runs are your memory: `run_store.py search "<words>"` before repeating work.
+6. **Self-anneal.** When a script breaks: read the error, fix the script, re-test
+   (ask first if the test costs money), update the SKILL.md Edge Cases and
+   Learnings, and log the lesson. The system is now stronger.
+
+### Data flow
+
+| Folder | Holds | Rule |
+|---|---|---|
+| `inputs/<project>/` | Files the user provides | Read-only to the agent |
+| `agent-data/` | Permanent reference data (catalogs, templates, specs) | Every asset listed in `agent-data/INDEX.md` |
+| `outputs/<run-slug>/` | One folder per run: `run.json` + `step_<n>_<name>.json` + deliverables | Tracked; the user-facing results |
+| `.tmp/` | Scratch and caches | Never relied on; `.tmp/scripts/` is the exception (tracked shared code) |
+
+Integrations: {{integrations_line}}. Secrets come from environment variables
+(`.env` locally, never committed; the platform's secret store when hosted).

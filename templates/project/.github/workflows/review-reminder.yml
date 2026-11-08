@@ -1,0 +1,130 @@
+# Commit review reminder — opens a GitHub issue when ≥THRESHOLD commits have
+# landed on main since the last review tag (review/YYYY-MM-DD). Ported from
+# Metorite by coding-agent-setup: AI raises the commit rate, so a human batch
+# review on a cadence catches drift that per-PR review misses.
+#
+# How to mark a review as done:
+#   git tag review/$(date +%Y-%m-%d) && git push --tags
+# Then close the open reminder issue.
+
+name: commit-review-reminder
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Commits since last review that trigger a reminder"
+        default: "5"
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: "Review cadence check"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # full history + tags required for git describe
+
+      - name: Count commits since last review tag
+        id: count
+        run: |
+          THRESHOLD="${{ inputs.threshold || '5' }}"
+          LAST_TAG="$(git describe --tags --match 'review/*' --abbrev=0 2>/dev/null || true)"
+
+          if [ -z "$LAST_TAG" ]; then
+            COUNT="$(git rev-list --count HEAD)"
+            SINCE_DESC="the initial commit (no review tag found)"
+            RANGE="HEAD"
+          else
+            COUNT="$(git rev-list --count "${LAST_TAG}..HEAD")"
+            SINCE_DESC="${LAST_TAG}"
+            RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          echo "count=${COUNT}"         >> "$GITHUB_OUTPUT"
+          echo "threshold=${THRESHOLD}" >> "$GITHUB_OUTPUT"
+          echo "since=${SINCE_DESC}"    >> "$GITHUB_OUTPUT"
+          echo "range=${RANGE}"         >> "$GITHUB_OUTPUT"
+          echo "Commits since last review (${SINCE_DESC}): ${COUNT} (threshold: ${THRESHOLD})"
+
+      - name: Ensure review-reminder label exists
+        if: ${{ fromJSON(steps.count.outputs.count) >= fromJSON(steps.count.outputs.threshold) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "review-reminder" \
+            --description "Automated reminder to review a batch of commits" \
+            --color "E4E669" 2>/dev/null || true
+
+      - name: Open reminder issue if threshold reached
+        if: ${{ fromJSON(steps.count.outputs.count) >= fromJSON(steps.count.outputs.threshold) }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COUNT:    ${{ steps.count.outputs.count }}
+          SINCE:    ${{ steps.count.outputs.since }}
+          RANGE:    ${{ steps.count.outputs.range }}
+          THRESHOLD: ${{ steps.count.outputs.threshold }}
+        run: |
+          # Skip if an open review-reminder issue already exists.
+          OPEN="$(gh issue list --label review-reminder --state open --json number --jq length)"
+          if [ "$OPEN" -gt 0 ]; then
+            echo "Reminder issue already open — skipping."
+            exit 0
+          fi
+
+          # Build the commit list (cap at 50 lines to keep the issue readable).
+          COMMITS="$(git log ${RANGE} --oneline | head -50)"
+          COMMIT_COUNT="$(git log ${RANGE} --oneline | wc -l | tr -d ' ')"
+          # NOTE: keep this assignment on ONE line. A continuation line at
+          # column 0 terminates the YAML block scalar early, which truncates
+          # this script mid-string and fails the step with
+          # "unexpected EOF while looking for matching quote".
+          if [ "$COMMIT_COUNT" -gt 50 ]; then
+            COMMITS="${COMMITS}"$'\n'"... (${COMMIT_COUNT} total — showing first 50)"
+          fi
+
+          # Write the issue body to a temp file to avoid shell quoting issues.
+          # NOTE: every heredoc line below MUST keep this same indent. YAML
+          # strips the block-scalar indent, so bash still sees the heredoc at
+          # column 0 — but a line written at column 0 *here* would end the
+          # block scalar and silently truncate this script.
+          BODY_FILE="$(mktemp)"
+          cat > "$BODY_FILE" <<BODY
+          ## Commit review due
+
+          **${COUNT} commits** have landed on \`main\` since the last review (${SINCE}).
+
+          Per this repo's commit review cadence, do a pass over this batch before continuing:
+
+          - [ ] List changed files: \`git diff --name-only ${RANGE}\`
+          - [ ] Check comments for accuracy and staleness
+          - [ ] Verify cross-references in AGENTS.md and docs
+          - [ ] Spot-check logic, type hints, and any inline \`TODO\`/\`FIXME\` markers
+          - [ ] Run the harness and the tests: \`python .harness/harness.py check\` and the project test command in AGENTS.md
+
+          ### Commits in this batch
+          \`\`\`
+          ${COMMITS}
+          \`\`\`
+
+          ### Mark the review done
+          \`\`\`bash
+          git tag review/\$(date +%Y-%m-%d)
+          git push --tags
+          \`\`\`
+          Then close this issue.
+          BODY
+
+          gh issue create \
+            --title "Review due — ${COUNT} commits since ${SINCE}" \
+            --label "review-reminder" \
+            --body-file "$BODY_FILE"
+
+          rm -f "$BODY_FILE"

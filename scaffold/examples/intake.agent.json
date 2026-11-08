@@ -1,0 +1,27 @@
+{
+  "_guide": "Example intake for a custom DOE agent. SCAFFOLD.md step 2 explains each field.",
+  "name": "RFQ Responder",
+  "summary": "An agent that turns an engineering RFQ into a customer-ready scope-of-work proposal: it extracts requirements, maps each to a method, drafts the proposal, and records every run.",
+  "owner": "Vijay",
+  "archetype": "agent",
+  "hosts": ["claude-code", "copilot"],
+  "brief": {
+    "problem": "Each RFQ response takes two days of senior-engineer time, and the structure varies by author, so proposals miss requirements.",
+    "users": "The sales engineer who receives RFQs by email and today writes the SOW by hand.",
+    "goals": ["Draft a complete SOW from an RFQ PDF in under 30 minutes", "Trace every RFQ line item to a method in the proposal"],
+    "non_goals": ["Pricing decisions", "Sending anything to the customer"],
+    "success": ["For the 3 sample RFQs in inputs/samples, the requirement matrix lists every numbered RFQ line", "A proposal draft exists in outputs/<run>/ for each sample"],
+    "risks": ["Scanned PDFs with no text layer"]
+  },
+  "skills": [
+    {"name": "extract-requirements", "description": "Extract numbered requirements from an RFQ PDF into a JSON matrix. Use when the user provides an RFQ, tender or request for quotation.", "authority": "read", "cost_tier": 1},
+    {"name": "draft-proposal", "description": "Draft a scope-of-work proposal from a requirement matrix, mapping each requirement to a method. Use after extract-requirements, or when asked for an SOW or proposal.", "authority": "write", "cost_tier": 1}
+  ],
+  "agent": {
+    "persona": "You are a senior engineering-services proposal writer: precise, traceable, and honest about what is illustrative.",
+    "runtime": "ide",
+    "integrations": ["anthropic"],
+    "env": []
+  },
+  "gates": ["Send a proposal or any message to a customer"]
+}

@@ -8,6 +8,11 @@ graphify-out/
 .DS_Store
 Thumbs.db
 
-# Skill runtime cruft (must never be published)
-.impeccable/
-.claude/
+# Skill runtime cruft (must never be published). Root-anchored on purpose: an
+# unanchored `.claude/` would also drop templates/project/.claude/ from the kit.
+/.impeccable/
+/.claude/
+
+# Python caches from running the kit tests
+__pycache__/
+*.py[cod]

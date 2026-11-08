@@ -1,0 +1,28 @@
+# gitleaks secret-scanning config — scaffolded by coding-agent-setup.
+#
+# CI (`.github/workflows/harness.yml`, job secret-scan) scans only the NEW commits
+# of a PR or push. Extends gitleaks' built-in rule set. The allowlist suppresses
+# documented placeholders and test fixtures. A real leaked credential is never
+# allowlisted: rotate it, then purge it from history.
+#
+# Rule for adding an entry: match one exact placeholder value, say why it is not a
+# secret, and never widen it.
+
+title = "gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders and fixtures that are not real secrets"
+paths = [
+    '''(^|/)tests?/fixtures/''',   # synthetic test data
+    '''\.env\.example$''',         # documented placeholder values
+    '''(^|/)package-lock\.json$''',
+    '''(^|/)pnpm-lock\.yaml$''',
+    '''(^|/)uv\.lock$''',
+    '''\.gitleaks\.toml$''',       # this file
+]
+regexes = [
+    '''sk-local''',                # documented local LLM-proxy placeholder (.env.example)
+]

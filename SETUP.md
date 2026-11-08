@@ -1,10 +1,17 @@
 # SETUP — agent-facing auto-install playbook
 
 > **You are a coding agent. Read this file top-to-bottom and execute it.**
-> It sets up a complex codebase for token-efficient, high-velocity development.
+> It sets up an **existing** codebase for token-efficient, high-velocity development.
+> **Empty or new folder — a new project or a custom agent? Use
+> [`SCAFFOLD.md`](SCAFFOLD.md) instead**: it generates the project skeleton and the
+> full DOE skill harness, then calls this file's installer for the tools.
 > Everything here has been validated on a real large multi-agent platform
 > (see the archetype and lessons in `PLAYBOOK.md`). When a step says
 > "verify," actually run the verification and report the number — do not assume.
+>
+> Want the DOE skill harness (`.github/skills/`, `self-annealing`, `harness.py`) in an
+> existing repo too? Run `scaffold/scaffold.py new` against it after this file — it is
+> non-destructive and composes your existing `AGENTS.md` (`SCAFFOLD.md` step 4).
 
 ---
 
@@ -250,6 +257,19 @@ If your host only auto-loads `CLAUDE.md`/`copilot-instructions.md` (not
 `AGENTS.md`), add a one-line pointer there — "read `AGENTS.md` first, and follow
 its Read-Before-Editing and Place-Before-Building rules" — so the chain is entered
 every session.
+
+### 5.3 Session continuity hooks (Claude Code; installed by the Config step)
+
+Ported from the platform these lessons came from. Each fails open (a crash never
+blocks a session) and ships with a test:
+
+| Hook | Event | What it does |
+|---|---|---|
+| `session-handoff.mjs` | SessionStart | Injects the open entries of `HANDOFF.md` (actions the last session left, each with a Check), so nothing pending depends on memory. `/handoff check \| add \| done \| end` maintains the queue |
+| `worktree-notice.mjs` | SessionStart | Warns when the rules this session loaded (`AGENTS.md`, `CLAUDE.md`, `.claude/`, skills) are behind `origin/main`, and — once Delivery's `worktree.sh` exists — when the session is in the primary checkout instead of its own worktree |
+| `stop-children.mjs` | Stop | Lists child processes older than 30 minutes the session left running (servers, watchers). Reports, never kills; cannot loop |
+
+Verify: `for t in .claude/hooks/*.test.mjs; do node "$t"; done`.
 
 ---
 

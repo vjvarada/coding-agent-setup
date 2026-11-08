@@ -1,0 +1,26 @@
+<!-- harness:entry -->
+# CLAUDE.md — {{name}}
+
+**Read [`AGENTS.md`](AGENTS.md) first, every session, and follow its Read-Before-Editing,
+Place-Before-Building and Session Protocol rules.** It is the single source of truth
+for every agent host; this file only adds what is specific to Claude Code.
+
+## What Claude Code loads here
+
+| Piece | Path | Notes |
+|---|---|---|
+| Contract | `AGENTS.md` → nested `*/AGENTS.md` | Read the chain for the area you touch |
+| Skills | `.claude/skills/<name>/SKILL.md` | **Generated proxies** → the canonical `.github/skills/<name>/`. Never hand-edit; never add a Claude-only copy. Run `python .harness/harness.py sync` after changing a skill |
+| Hooks | `.claude/settings.json` | SessionStart: handoff queue, harness status, worktree/stale-rules notice. PreToolUse: owner gates (`plan-guard`), output compression (`rtk`). Stop: leftover processes |
+| Subagents + commands | `.claude/agents/`, `.claude/commands/` | The planning/dispatch loop (`/plan-feature`, `/next-ticket`) and `/handoff`, when installed |
+
+## Working here
+
+- Skills: invoke by name (`/self-annealing`, `/run-and-verify`, ...) or read the
+  canonical SKILL.md and run its scripts from the repo root.
+- Status at any time: `python .harness/harness.py check`. Skill tests:
+  `python .harness/harness.py test`.
+- A lesson learned → `python .github/skills/self-annealing/scripts/anneal.py log ...`
+  right away, not at the end.
+- Before your final message: stop what you started, run the anneal gate, and ask
+  before committing.

@@ -1,0 +1,16 @@
+<!-- harness:readme -->
+## Working on this repo (humans and agents)
+
+This workspace was scaffolded by [coding-agent-setup](https://github.com/vjvarada/coding-agent-setup)
+for agent-assisted development (DOE: directives → orchestration → execution).
+
+| Start here | |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | The contract every agent host reads: architecture map, session protocol, rules |
+| [`docs/brief.md`](docs/brief.md) | What we are building, for whom, and what success means |
+| [`HANDOFF.md`](HANDOFF.md) | Actions a previous session left open |
+| `.github/skills/` | Skills: directive (`SKILL.md`) + deterministic scripts + tests |
+
+{{commands_table}}
+
+Harness health: `python .harness/harness.py check` · skill tests: `python .harness/harness.py test`.

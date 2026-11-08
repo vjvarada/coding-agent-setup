@@ -1,0 +1,64 @@
+# Kit CI — every archetype must scaffold and pass its own harness check, and every
+# hook and script test must pass, on Linux and Windows (the kit's users are on both).
+name: kit
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: kit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Kit tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.12"]
+        include:
+          # The floor the docs promise (macOS's default python3 is 3.9): every
+          # write once crashed there on Path.write_text(newline=), which is 3.10+.
+          - os: ubuntu-latest
+            python: "3.9"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Scaffolder (every archetype scaffolds and passes its own check)
+        run: python -m unittest discover -s scaffold/tests -v
+      - name: Core skill tests
+        if: "!cancelled()"
+        run: |
+          for d in templates/skills/*/tests; do
+            python -m unittest discover -s "$d" -t "$d" -v
+          done
+      - name: Hook tests
+        if: "!cancelled()"
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          for t in templates/claude/hooks/*.test.mjs; do
+            echo "::group::$t"; node "$t"; echo "::endgroup::"
+          done
+      - name: Premerge self-test
+        if: "!cancelled() && runner.os == 'Linux'"
+        run: bash templates/scripts/premerge.test.sh
+      - name: Installer syntax
+        if: "!cancelled()"
+        run: bash -n install.sh

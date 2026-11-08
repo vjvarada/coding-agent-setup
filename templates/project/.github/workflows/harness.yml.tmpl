@@ -1,0 +1,106 @@
+# Harness CI — scaffolded by coding-agent-setup. It keeps the agent harness honest
+# (contracts, skills, proxies, hooks) and runs the project's own tests.
+#
+# Lessons baked in (from the Metorite pr-check workflow):
+# * No trigger-level path filter: it wedges required checks, and a skipped job
+#   counts as passed.
+# * Every hook ships with a test, and a fence that never runs is advisory by
+#   accident — so CI runs every .claude/hooks/*.test.mjs.
+# * The secret scan reads only the new commits, so an old leak in history does not
+#   block every PR (rotate and purge that separately).
+# * A rerun replays the first event: after editing a PR body, push a commit.
+name: harness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: harness-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    name: Harness check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Contracts, skills, proxies and ignore traps
+        run: python .harness/harness.py check
+      - name: Skill tests and script --help smoke
+        if: "!cancelled()"
+        run: python .harness/harness.py test
+      - name: Hook tests (every hook ships with one)
+        if: "!cancelled()"
+        run: |
+          shopt -s nullglob
+          for t in .claude/hooks/*.test.mjs; do
+            echo "::group::$t"; node "$t"; echo "::endgroup::"
+          done
+      - name: Premerge self-test
+        if: "!cancelled() && hashFiles('scripts/premerge.test.sh') != ''"
+        run: bash scripts/premerge.test.sh
+
+  tests:
+    name: Project tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+{{ci_test_steps}}
+
+  secret-scan:
+    name: Secret scan (new commits only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (prebuilt binary; `go install` breaks on the module path)
+        run: |
+          VERSION=8.18.4
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+      - name: Scan
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            # On a push there is no PR base: measure against the previous commit,
+            # never the empty tree (that would rescan all history).
+            BASE="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+          fi
+          gitleaks detect --source . --config .gitleaks.toml \
+            --log-opts="--no-merges ${BASE}..HEAD" --redact --no-banner
+
+  pr-body:
+    name: PR states its verification
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: A line that starts "Verified:" (see .github/pull_request_template.md)
+        run: |
+          # Python reads the body from the event FILE, so no text of the body
+          # becomes shell code.
+          body="$(python3 -c 'import json, os; print((json.load(open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8")).get("pull_request") or {}).get("body") or "")')"
+          if grep -qE '^Verified:[[:space:]]*[^[:space:]<]' <<< "$body"; then
+            echo "the body names its verification evidence"
+            exit 0
+          fi
+          echo "::error::No line of the PR body starts with 'Verified:'. Name the command you ran and what it showed (or 'Verified: docs only'). Then push a commit, because a rerun reads the old body."
+          exit 1

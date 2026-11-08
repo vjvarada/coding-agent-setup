@@ -133,8 +133,10 @@ build. Otherwise dispatch `diff-reviewer`.
   can wait). If it is due, do it now.
 - Commit, push the branch, open a PR. The body carries: ticket id, the task URL
   (if a board is in use), the slice built, acceptance evidence, verification
-  output, reviewer findings, and what was deferred. Add the task reference for
-  the branch and the PR, and move the task to its review status.
+  output, reviewer findings, and what was deferred. Include one line that starts
+  `Verified:` and names the command the verifier ran and what it showed — a
+  scaffolded repo's CI (`pr-body` job) fails a PR without it. Add the task
+  reference for the branch and the PR, and move the task to its review status.
 - **Merge only if the owner has granted it.** Read `.claude/OWNER_GRANTS.md`.
   - **No `merge` grant in date** (the kit default): **stop at PR opened.**
     Merging and deploying belong to the owner. Say so in the report.

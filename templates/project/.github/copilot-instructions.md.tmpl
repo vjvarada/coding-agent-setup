@@ -1,0 +1,19 @@
+<!-- harness:entry -->
+# {{name}} — Copilot instructions
+
+**Read [`AGENTS.md`](../AGENTS.md) first and follow it.** It is the single source of
+truth for every agent host (architecture contract, session protocol, engineering
+rules, skills). Do not fork rules into this file; fix the canonical one.
+
+- **Skills** live in `.github/skills/<name>/SKILL.md` with their `scripts/` and
+  `tests/`. Read the SKILL.md before running any of its scripts; run scripts from the
+  repo root. The skills table:
+
+<!-- harness:skills:start -->
+<!-- harness:skills:end -->
+
+- **Verify by evidence** with the `run-and-verify` skill before reporting done.
+- **Self-anneal:** when something breaks, fix it, test it, update the owning SKILL.md,
+  and log the lesson (`.github/skills/self-annealing/SKILL.md`).
+- **No subagents here:** run the planning/dispatch roles sequentially, and never
+  verify your own work in the session that wrote it — start a fresh chat for review.

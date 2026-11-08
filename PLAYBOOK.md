@@ -411,6 +411,60 @@ owner a checkpoint. See [`DELIVERY.md`](DELIVERY.md) §8, §9 and §11.
 
 ---
 
+## Principle 16 — Reserve the model for judgment; push mechanics into tested scripts (attacks: *compounding error*)
+
+An LLM step is probabilistic. At 90% per step, five chained steps succeed 59% of
+the time. The fix is architectural: put a deterministic node between the steps that
+matter. The model routes, interprets and recovers; scripts do everything mechanical
+— the same way every time, 10,000× faster, and testable. This is the DOE framework
+(Directive → Orchestration → Execution), and every workspace the kit scaffolds is
+built on it: directives are `SKILL.md` files, execution is the skill's `scripts/`,
+and the agent orchestrates. The operational rule: **when you would do the same
+mechanical step twice, write the script instead** — and give it a `--help`, a JSON
+result, a loud failure, and a test.
+
+*Lesson:* the kit applies this to itself. Scaffolding a workspace is an interview
+(judgment, the agent) plus a generator (mechanics, `scaffold.py`). An agent that
+hand-wrote the forty files instead would make forty small, different mistakes per
+project. See [`DOE.md`](DOE.md) §1–2.
+
+## Principle 17 — Errors are lessons: self-anneal, with a gate (attacks: *the same bug, next month*)
+
+A fix that lives only in the session that found it is a repeat bug scheduled for
+the next one. When something breaks: fix it, test the fix, update the directive
+that let it happen, and log the lesson — then integrate it into its architectural
+home (a script plus a test, a SKILL.md, an `AGENTS.md`). A capability is integrated
+only when every surface that routes or describes it agrees. And put a **gate** at
+the end of the session (`anneal.py gate`): open lessons, a failing check, or
+uncommitted harness changes stop the sign-off. Prose-only fixes regress silently;
+gated, tested ones compound.
+
+*Lesson:* on an agent workspace for engineering simulation, a capability added in
+code was invisible to the agent for weeks because one of six description surfaces
+was not updated, and a real bug in a case factory was caught only by the tests the
+annealing checklist demanded. See [`DOE.md`](DOE.md) §4.
+
+## Principle 18 — A generator must emit what its validator requires; check the manifest before the first push (attacks: *born broken*)
+
+Scaffolding tools fail quietly: the generated project looks complete and is not.
+Two rules close the gap. First, **the generator and the validator share one list
+of required files, and a test scaffolds every variant and runs the validator on
+it** — so "every new project starts non-compliant" cannot recur. Second, **before
+the first push, compare the staged file list with the files the project cannot run
+without**; `.gitignore` interactions fail silently and a successful push is no
+evidence the repo is complete.
+
+*Lesson:* a DOE agent generator created the folder structure but not seven files
+its own compatibility spec marked required, so every agent built from it was
+repaired by hand. Separately, a bare `*.tmp` ignore rule matched the `.tmp/`
+directory, the `!.tmp/scripts/` negation was powerless under an excluded parent,
+and the first commit of a standalone agent repo silently omitted all sixteen shared
+utilities. And this kit's own `.gitignore` had an unanchored `.claude/` that would
+have dropped `templates/project/.claude/` from the published kit. All three are now
+tests. See [`SCAFFOLD.md`](SCAFFOLD.md) step 7.
+
+---
+
 ## Quick reference — the loop
 
 1. **Orient** — read the project instructions and the DOX contract chain for the
@@ -428,11 +482,13 @@ owner a checkpoint. See [`DELIVERY.md`](DELIVERY.md) §8, §9 and §11.
 7. **Merge** *(delivery)* — run the premerge check against today's `main`
    (Principle 13), merge, smoke-test on staging, and confirm the served SHA
    (Principle 15). Production follows on the release train.
-8. **Record** — if you learned something that makes the next change faster, push
-   it back to this kit (see `CONTRIBUTING.md`). Update the owning `AGENTS.md` if the
-   change moved a boundary (DOX "Update After Editing"). If the work came off a
-   plan, write back what shipped and what remains, for a reader with no memory of
-   this session (Principle 9).
+8. **Record** — log what you learned as a lesson and integrate it (Principle 17:
+   `anneal.py log`, then the owning SKILL.md, script + test, or `AGENTS.md`); if it
+   would help every project, push it back to this kit (see `CONTRIBUTING.md`).
+   Update the owning `AGENTS.md` if the change moved a boundary (DOX "Update After
+   Editing"). If the work came off a plan, write back what shipped and what remains,
+   for a reader with no memory of this session (Principle 9). End with the anneal
+   gate and a `HANDOFF.md` entry for anything handed over.
 
 Steps 1–8 are one agent on one change. When the work is a *project* rather than a
 change — a queue of features, planned and dispatched over days — that loop becomes
@@ -445,7 +501,8 @@ is in [`DELIVERY.md`](DELIVERY.md).
 
 ## Going further
 
-These fifteen principles are the core. For the harder practices that keep a codebase
+These eighteen principles are the core; [`DOE.md`](DOE.md) is the method that
+Principles 16–18 come from, applied to whole workspaces and custom agents. For the harder practices that keep a codebase
 safe and cheap for agents *over time* — tool risk annotations, fail-closed
 permissions, golden trajectory evals, prompt-cache discipline, auto-compaction
 thresholds, tool naming, and complexity/correctness CI gates — see

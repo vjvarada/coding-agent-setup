@@ -1,0 +1,153 @@
+"""agent-{{slug}} — MAF Agent definitions (CommandCenter runtime).
+
+{{name_doc}}: {{summary_py}}
+
+Exports:
+    build_agents() -> list[GitHubCopilotAgent]   (Dynamic Agent Loader entry point)
+
+Architecture (DOE v2):
+  Layer 1 (Skills)        — .github/skills/*/SKILL.md + .github/skills/*/scripts/
+  Layer 2 (Orchestration) — THIS FILE (GitHubCopilotAgent via MAF)
+  Layer 3 (Execution)     — .tmp/scripts/ shared utilities + skill scripts
+
+Contract (agent_repo_compatibility.md v6.0): build_agents() is synchronous,
+zero-argument and pure; no I/O at import except reading the prompt files; every
+tool is `async def` returning str and raising on failure; subprocesses use
+sys.executable; the framework imports live inside build_agent().
+Scaffolded by coding-agent-setup — add one tool per skill capability below.
+"""
+from __future__ import annotations
+
+import asyncio
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+AGENT_DIR = Path(__file__).parent.resolve()
+PROMPTS_DIR = AGENT_DIR / ".github" / "prompts"
+SKILLS_DIR = AGENT_DIR / ".github" / "skills"
+SCRIPTS_DIR = AGENT_DIR / ".tmp" / "scripts"
+
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+
+# ── Subprocess helpers ────────────────────────────────────────────────────────
+
+def _run_env() -> dict[str, str]:
+    """Put .tmp/scripts/ on PYTHONPATH so skill scripts can import shared utilities."""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{SCRIPTS_DIR}{os.pathsep}{existing}" if existing else str(SCRIPTS_DIR)
+    return env
+
+
+async def _run(args: list[str]) -> str:
+    """Run a script as a subprocess. Raises RuntimeError on a non-zero exit."""
+    result = await asyncio.to_thread(
+        subprocess.run, args, capture_output=True, text=True, cwd=str(AGENT_DIR), env=_run_env(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or f"Script exited {result.returncode}")
+    return result.stdout or "(no output)"
+
+
+def _skill_script(skill: str, script: str, args: str) -> list[str]:
+    return [sys.executable, str(SKILLS_DIR / skill / "scripts" / script), *shlex.split(args)]
+
+
+# ── System prompt ─────────────────────────────────────────────────────────────
+
+def _frontmatter_value(text: str, key: str) -> str:
+    if not text.startswith("---"):
+        return ""
+    header = text.split("---", 2)[1]
+    for line in header.splitlines():
+        if line.startswith(f"{key}:"):
+            return line.split(":", 1)[1].strip().strip("'\"")
+    return ""
+
+
+def _build_system_prompt() -> str:
+    """system.md + every runtime SKILL.md (developer-audience skills are left out)."""
+    parts: list[str] = []
+    system_md = PROMPTS_DIR / "system.md"
+    if system_md.exists():
+        parts.append(system_md.read_text(encoding="utf-8", errors="replace"))
+    else:
+        agents_md = AGENT_DIR / "AGENTS.md"
+        if agents_md.exists():
+            parts.append(agents_md.read_text(encoding="utf-8", errors="replace"))
+    sections: list[str] = []
+    for skill_md in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+        content = skill_md.read_text(encoding="utf-8", errors="replace")
+        if _frontmatter_value(content, "audience") == "developer":
+            continue
+        sections.append(f"\n### Tool: {skill_md.parent.name}\n\n{content}")
+    if sections:
+        parts.append("\n\n---\n\n## Registered Skill Tool Descriptions\n")
+        parts.extend(sections)
+    return "\n".join(parts)
+
+
+SYSTEM_PROMPT = _build_system_prompt()
+
+
+# ── Tool functions ────────────────────────────────────────────────────────────
+#
+# Every async def below is a callable tool. The docstring IS the routing signal —
+# write "Use this when the user asks about X." Return str. Raise on failure.
+
+async def describe_skills() -> str:
+    """List this agent's skills with their descriptions. Use when the user asks what this agent can do."""
+    lines = []
+    for skill_md in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+        content = skill_md.read_text(encoding="utf-8", errors="replace")
+        if _frontmatter_value(content, "audience") == "developer":
+            continue
+        lines.append(f"- {skill_md.parent.name}")
+    return "\n".join(lines) or "(no skills yet)"
+
+{{tool_functions}}
+
+# ── LiteLLM provider (CommandCenter mode) ────────────────────────────────────
+
+def _llm_provider() -> dict[str, Any]:
+    base_url = os.environ.get("LITELLM_BASE_URL", "http://127.0.0.1:8080")
+    api_key = os.environ.get("LITELLM_MASTER_KEY", "sk-local")
+    return {"type": "openai", "base_url": f"{base_url}/v1", "api_key": api_key}
+
+
+# ── Agent factory ─────────────────────────────────────────────────────────────
+
+def build_agent() -> "GitHubCopilotAgent":  # noqa: F821
+    from agent_framework_github_copilot import GitHubCopilotAgent  # type: ignore[import]
+    from copilot.types import PermissionHandler  # type: ignore[import]
+
+    return GitHubCopilotAgent(
+        name="{{slug}}",
+        description="{{description_py}}",
+        instructions=SYSTEM_PROMPT,
+        tools=[
+            describe_skills,
+{{tools_list}}
+        ],
+        default_options={
+            "model": "tier-balanced",
+            "provider": _llm_provider(),
+            "mcp_servers": {},
+            "on_permission_request": PermissionHandler.approve_all,
+        },
+    )
+
+
+def build_agents() -> list:
+    """Dynamic Agent Loader entry point. Synchronous, zero-argument, pure."""
+    return [build_agent()]
+
+
+__all__ = ["build_agents", "build_agent", "SYSTEM_PROMPT"]

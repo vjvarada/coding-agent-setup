@@ -1,0 +1,24 @@
+# docs/ — durable project knowledge
+
+## Purpose
+
+The project's written memory for humans and agents: why it exists, what to build
+next, how it was decided, and what was learned. Not code, not generated output.
+
+## Scope & Boundaries
+
+- Owns: `brief.md` (why and for whom), `lessons.md` (the self-annealing backlog),
+  `plan/work-plan.md` (the dispatch board, when the planning loop is used),
+  `specs/<workstream>.md` (one owning spec per workstream), `decisions/` (one file
+  per decision that should not be re-litigated), `wireframes/` (UI sketches).
+- Does NOT own: how a directory works (its own `AGENTS.md`), how a skill runs (its
+  `SKILL.md`), pending cross-session actions (`HANDOFF.md` at the root), or
+  generated reports and run results.
+
+## Conventions
+
+- Answer first (BLUF): the first lines of every doc carry its conclusion and status.
+- Every spec and plan row has a dated status header verified against the code.
+- A spec's acceptance criteria are commands or observable states, never "works well".
+- Delete stale text instead of explaining history; git is the archive.
+- `lessons.md` is edited through `anneal.py`, not by hand.

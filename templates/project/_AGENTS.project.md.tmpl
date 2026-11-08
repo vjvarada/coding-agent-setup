@@ -1,0 +1,89 @@
+
+## Session Protocol
+
+The DOE operating loop (Directive → Orchestration → Execution) for every session:
+
+1. **Start.** Run the Check of each `HANDOFF.md` entry and prune the done ones (the
+   SessionStart hook lists them). Note OPEN lessons in `docs/lessons.md`.
+2. **Orient.** Read this contract chain for the area you will touch; query the code
+   graph (`graphify query "..."`) before reading files, if it is installed.
+3. **Reuse before building.** Check the Skills table below. If a skill covers the
+   job, read its `SKILL.md` and run its scripts. Place new work per *Place Before
+   Building*.
+4. **Mechanics in code, judgment in you.** When you would do the same mechanical
+   step twice, write or extend a script instead (`skill-authoring` skill). Each
+   step done by reasoning alone compounds error; each step done by a tested script
+   does not.
+5. **Verify by evidence** with the `run-and-verify` skill before reporting done.
+6. **Self-anneal.** When something breaks: fix it, test the fix, update the owning
+   SKILL.md or AGENTS.md, and log the lesson (`self-annealing` skill).
+7. **End.** Run `python .github/skills/self-annealing/scripts/anneal.py gate`, add
+   `HANDOFF.md` entries for anything handed over (`/handoff end`), and ask the user
+   before committing.
+
+## Engineering Rules
+
+- **Never commit or push on `main`.** Work on a branch; the loop stops at "PR opened".
+- **A rule you add names the test that fails when it is broken** — or it is labelled
+  advisory. An untested gate is a guess.
+- **Re-verify every anchor at dispatch.** Specs and docs go stale; the code is the fact.
+- **The verifier is never the implementer.** Review hunts for the case where the
+  change is wrong; an agent asked "is this correct?" says yes.
+- **Do not mark work done from the write-up.** Done means the acceptance command passed.
+- **Do not refactor the tree to conform.** Rules bind new and changed work; record
+  older drift as a finding (`HANDOFF.md` or the board).
+- **Ship dark.** New behaviour that reaches users or third parties lands behind a
+  flag, default OFF.
+- **Clean up after yourself.** A deadline on every wait, a timeout on every
+  long command; stop the servers and jobs you started.
+- **The lockfile is the version source of truth.** Do not hand-copy versions into docs.
+- **Money, identity and third parties stop you.** Ask before anything that spends,
+  authenticates as someone, or contacts the outside world.
+
+---
+
+# {{name}} — Project Root
+
+{{summary}}
+
+**Archetype:** {{archetype_title}} · **Stack:** {{stack_title}} · **Hosts:** {{hosts_line}}
+Brief: [`docs/brief.md`](docs/brief.md) — the why, the users, and what success means.
+
+## Stack & Commands
+
+{{commands_table}}
+
+## Global Constraints (Non-Negotiable)
+
+{{constraints_list}}
+
+## Owner Gates
+
+Actions no agent takes without the owner, enforced by `.claude/plan-guard.config.json`
+where the dispatch loop is installed (a gate in prose but not in the guard is not a gate):
+
+{{gates_list}}
+{{archetype_section}}
+## Skills
+
+Canonical skills live in `.github/skills/<name>/` (SKILL.md + scripts/ + tests/).
+`python .harness/harness.py sync` regenerates this table and the host proxies.
+
+<!-- harness:skills:start -->
+<!-- harness:skills:end -->
+
+## Child DOX Index
+
+Every top-level subsystem that owns a distinct kind of work has its own AGENTS.md
+and a row here. This table is the routing map for **Place Before Building** — an
+unlisted directory is a placement smell.
+
+| Scope | Path | Covers |
+|---|---|---|
+{{scopes_table}}
+
+## Harness Map
+
+| Path | What it is |
+|---|---|
+{{harness_map}}

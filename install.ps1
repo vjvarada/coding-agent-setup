@@ -127,13 +127,24 @@ else {
   # Its optional MCP server needs graphifyy[mcp] importable from `python`, so it
   # is left as a manual step — see SETUP.md section 2 and templates/*/mcp.json.
 
+  # Claude Code: RTK hook, session hooks (handoff queue, worktree/stale-rules
+  # notice, leftover-process report), /handoff, and the settings that register
+  # them. plan-guard is registered by the Loop step, next to its script.
   $hook = Join-Path $Templates "claude\hooks\rtk-bash.sh"
   if (Test-Path $hook) {
-    New-Item -ItemType Directory -Force ".claude\hooks" | Out-Null
+    New-Item -ItemType Directory -Force ".claude\hooks", ".claude\commands" | Out-Null
     Copy-Item $hook ".claude\hooks\rtk-bash.sh" -Force
+    foreach ($h in @("session-handoff", "worktree-notice", "stop-children")) {
+      foreach ($f in @("$h.mjs", "$h.test.mjs")) {
+        if (-not (Test-Path ".claude\hooks\$f")) { Copy-Item (Join-Path $Templates "claude\hooks\$f") ".claude\hooks\$f" }
+      }
+    }
+    if (-not (Test-Path ".claude\commands\handoff.md")) {
+      Copy-Item (Join-Path $Templates "claude\commands\handoff.md") ".claude\commands\handoff.md"
+    }
     $settings = Join-Path $Templates "claude\settings.json"
     if (Test-Path $settings) { Merge-Json ".claude\settings.json" ((Get-Content $settings -Raw) | ConvertFrom-Json -AsHashtable) }
-    Ok ".claude/ RTK hook + settings"
+    Ok ".claude/ RTK hook + session hooks + /handoff + settings"
   }
 
   $cpi = ".github\copilot-instructions.md"
@@ -184,6 +195,13 @@ elseif (-not (Test-Path (Join-Path $Templates "claude\agents"))) {
   foreach ($f in @("plan-guard.mjs", "plan-guard.test.mjs")) {
     if (Test-Path ".claude\hooks\$f") { Skip ".claude/hooks/$f exists" }
     else { Copy-Item (Join-Path $Templates "claude\hooks\$f") ".claude\hooks\$f"; Ok ".claude/hooks/$f" }
+  }
+  # Register plan-guard only here, next to its script: a repo without the loop
+  # must never carry a hook whose script is absent (it would error on every call).
+  $loopSettings = Join-Path $Templates "claude\settings.loop.json"
+  if (Test-Path $loopSettings) {
+    Merge-Json ".claude\settings.json" ((Get-Content $loopSettings -Raw) | ConvertFrom-Json -AsHashtable)
+    Ok ".claude/settings.json registers plan-guard"
   }
 
   if (Test-Path ".claude\plan-guard.config.json") {
