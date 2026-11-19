@@ -26,8 +26,13 @@ make large, unfamiliar codebases cheap and fast to work on:
   stops at "PR opened" so merge and deploy stay human.
 - **Delivery** — the path from "slice built" to "in production": a one-command
   local stack per worktree, risk-tiered review, a premerge check against today's
-  `main`, staging plus a daily release train, and an optional dated owner-grant
-  window. Run it before you push, test the merge, and verify by evidence.
+  `main`, release slots on a clock behind dark flags, and an optional dated
+  owner-grant window. Run it before you push, test the merge, and verify by evidence.
+- **Fleet** — many agents, many machines, many people: an orchestrator,
+  background lanes with common rules, one merge lane fed by a queue file,
+  release checks by evidence, an always-on box that runs while the owner is
+  away, safe sign-ins, and a contributor playbook so a second person runs his
+  own fleet without collisions.
 
 ## Quickstart
 
@@ -50,10 +55,12 @@ config, never overwrite, and no-op anything already installed.
 | [`PLAYBOOK.md`](PLAYBOOK.md) | The **methodology** — why these tools, the principles behind them, hard-won lessons |
 | [`ORCHESTRATION.md`](ORCHESTRATION.md) | **Multi-agent planning + dispatch** — the two loops, the seven roles, where wireframes and evals fit, what stays human, and what it costs |
 | [`DELIVERY.md`](DELIVERY.md) | **Delivery** (capability #6) — local-first inner loop, risk tiers, two-speed delivery, premerge, staging and the release train, owner-grant window, task-board protocol, and how to measure your own speed |
+| [`FLEET.md`](FLEET.md) | **Fleet** (capability #7) — many agents, machines and people: lanes and their common rules, the merge lane and its queue file, release checks by evidence, the owner away, accounts and sign-ins, a second person's fleet, failure modes seen |
 | [`HARNESS-PRACTICES.md`](HARNESS-PRACTICES.md) | Harder harness practices (tool risk annotations, fail-closed permissions, trajectory evals, prompt-cache discipline, CI gates) for keeping a codebase agent-developable over time |
 | [`install.sh`](install.sh) / [`install.ps1`](install.ps1) | Runnable installers (Unix / Windows) |
 | [`templates/`](templates/) | Ready-to-copy config for Claude Code + VS Code Copilot |
 | [`templates/scripts/`](templates/scripts/) | Delivery scripts: `dev_up.sh` (local stack), `premerge.sh`, `worktree.sh` |
+| [`templates/fleet/`](templates/fleet/) | Fleet templates: lane rules, an orchestrator start note, a wind-down note, a contributor playbook, and the lane scripts (`start_lane.sh`, `wake_lane.sh`, `limit_waker.py`) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | How we push new learnings back into this kit |
 
 ## Host support

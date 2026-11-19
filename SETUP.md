@@ -20,7 +20,8 @@ supports and skip the rest without failing.
 | 3 | **Review + verify skills** | Adversarial code review + end-to-end verification before commit. Catches the expensive class of bug: plausible-but-wrong. | Any agent (methodology + optional slash commands) |
 | 4 | **Project instructions + DOX contract** | A root `AGENTS.md`/`CLAUDE.md` that encodes conventions once, plus a hierarchy of per-directory `AGENTS.md` contracts with a *place-before-building* rule — so the agent stops rediscovering the repo AND puts new features in the right architectural layer instead of wherever a file was open. | Any host (plain markdown) |
 | 5 | **Planning + dispatch loop** | A supervisor-worker loop that takes a goal to merged PRs: decompose → wireframe → spec → audit, then dispatch → build → verify → review. The plan lives in the repo; owner gates are enforced by a hook, not a prompt. | Claude Code (subagents); other hosts run the roles sequentially |
-| 6 | **Delivery** (local-first run, premerge, staging and release train, owner grants, task board) | The path from "slice built" to "in production". A one-command local stack per worktree, a merge test against today's `main`, risk-tiered review, and an optional dated autonomy window. Cuts red CI runs and post-push repair rounds. | Any host for the scripts. Hooks and slash commands need Claude Code |
+| 6 | **Delivery** (local-first run, premerge, release slots, owner grants, task board) | The path from "slice built" to "in production". A one-command local stack per worktree, a merge test against today's `main`, risk-tiered review, and an optional dated autonomy window. Cuts red CI runs and post-push repair rounds. | Any host for the scripts. Hooks and slash commands need Claude Code |
+| 7 | **Fleet** (many agents, machines and people) | Background lanes with common rules, one merge lane, release checks by evidence, an always-on box while the owner is away, safe sign-ins, and a contributor playbook for a second person. Install it only when more than three sessions run at once, or a second person joins. | Claude Code (`claude --bg`, `claude attach`). Other hosts need their own background sessions |
 
 The single biggest token win on a large codebase is **#1 (Graphify)** — a
 grep/read exploration is dozens of tool calls; a `graphify query` is one. #2 is
@@ -399,6 +400,23 @@ slash commands need Claude Code. On other hosts, follow `DELIVERY.md` by hand an
 keep the verifier in a fresh session.
 
 ---
+
+## 6c. Fleet (capability #7)
+
+The methodology is [`FLEET.md`](FLEET.md). Install it after #6 works. The
+installer does not copy it. Copy by hand:
+
+1. Copy `templates/fleet/lane-rules.md` to `<your lanes dir>/lane-rules.md`, and fill in the placeholders.
+2. Copy `start_lane.sh` and `wake_lane.sh` to the always-on machine. Set `REPO_DIR` and `LANES_DIR`.
+3. Write one start note per lane: its stream, then the lane rules.
+4. Start one merge lane, and create the queue file (`FLEET.md` §5.1).
+5. Before you leave the owner's machine, fill in `templates/fleet/orchestrator-note.md` and start the box orchestrator.
+6. Optional, and not yet tested in a real limit event: `templates/fleet/limit_waker.py`.
+7. For a second person, copy `templates/fleet/CONTRIBUTOR.md` to `docs/contributor_playbook.md` and fill it in.
+
+**Check it works:** send one lane an order with `wake_lane.sh`. Then confirm
+three facts: the text is in its transcript, its next reply refers to the
+order, and the board shows the act.
 
 ## 7. Verify (do this — report real numbers)
 

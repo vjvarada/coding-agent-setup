@@ -1,6 +1,6 @@
 # DELIVERY — from "slice built" to "in production"
 
-**Bottom line: run the change on your own machine before you push, test the merge you will land, spend review by risk, and make staging a smoke test.** This is capability #6. It covers everything that happens after an agent finishes a slice. [`ORCHESTRATION.md`](ORCHESTRATION.md) covers how the slice gets built.
+**Bottom line: run the change on your own machine before you push, test the merge you will land, spend review by risk, and release on a clock, behind flags.** This is capability #6. It covers everything that happens after an agent finishes a slice. [`ORCHESTRATION.md`](ORCHESTRATION.md) covers how the slice gets built.
 
 The practices come from a multi-tenant SaaS product built by one owner with many parallel Claude Code agents. That product is the worked example here and the source of every measured number. The practices are generic. Adapt the names, keep the shape.
 
@@ -19,7 +19,7 @@ So the system attacks four costs:
 | A bug found after the push costs a CI round and a re-read | Run the app locally first | 2 |
 | Review spent evenly on every slice | Spend review by risk tier | 3, 4, 5 |
 | A green PR that breaks `main` after the merge | Test the merge with today's `main` | 7 |
-| A merge that reaches customers before anyone looked | Staging, then a daily release train | 8 |
+| A merge that reaches customers before anyone looked | Release slots on a clock, and dark flags | 8 |
 
 **Adopt it when:**
 
@@ -81,7 +81,7 @@ Process start-up under Git Bash is the cost on Windows. A container removes it.
 
 ### What the PC cannot test
 
-The local stack holds no keys. Real OAuth sign-in, real provider webhooks, mail sync, model calls and the deploy path do not work on it. Test those on staging (section 8).
+The local stack holds no keys. Real OAuth sign-in, real provider webhooks, mail sync, model calls and the deploy path do not work on it. Section 8 says where each is tested.
 
 **[Repo]** Two traps from the source product's Windows box. Docker advises keeping bind mounts on the WSL2 filesystem. One shared WSL2 VM hung every session once, when a local CI run had no memory cap. Cap containers and check free memory before you start.
 
@@ -145,23 +145,32 @@ Each red run cost about 30 minutes. Process fences caused 41% of red runs. That 
 
 ---
 
-## 5. Model routing — cheap model works, strong model for the hard cases
+## 5. Model routing — pick the model for the job
 
-**Rule: the cheaper model does the work. The strongest model takes the hard cases.** **[Vendor]** Anthropic reports that multi-agent systems use about 15x the tokens of a chat, and that most coding tasks suit them poorly. Every dispatch costs a floor of tokens. Use the strong model only where it changes the result.
+**Rule: route each dispatch to the model that fits the job.** **[Vendor]** Anthropic reports that multi-agent systems use about 15x the tokens of a chat, and that most coding tasks suit them poorly. Every dispatch costs a floor of tokens. Use the strong model only where it changes the result.
+
+**[Repo] Update, November 2026.** The source product first used "the cheaper model does the work". It moved to a table by job, because the cheap model kept missing the same class of finding on shared code.
 
 | Role | LOW | STANDARD | HIGH |
 |---|---|---|---|
-| Spec auditor | cheap | cheap | cheap |
-| Implementer | cheap | cheap | **strongest** |
-| Verifier | cheap | cheap | **strongest** |
-| Adversarial reviewer | skipped | strongest, at the hardening pass | strongest |
+| Spec auditor | mid | mid | mid |
+| Implementer | mid | mid, or **strongest** when the slice edits a shared seam or a shared list | **strongest** |
+| Verifier | mid | mid | **strongest** |
+| Adversarial reviewer | skipped | **strongest**, at the hardening pass | **strongest** |
 
-Two escalations override the table:
+"Mid" is a capable coding model, such as Sonnet. "Strongest" is the top model, such as Opus.
 
-- **A second try after the cheap model failed on the same finding** goes to the strongest model. The cheap model already missed it once.
-- **A hard problem** goes to the strongest model at any tier. That means a slice that crosses three or more services, or a concurrency, cache or ordering bug.
+These escalations override the table:
 
-Use the smallest model for a pure lookup with no judgement: find a file, list callers, count rows. Never use it to build, verify or review.
+- **The first slice of a spec:** the strongest model audits it.
+- **A second try after a FAIL on the same finding** goes to the strongest model. The cheaper model already missed it once.
+- **A hard problem** goes to the strongest model at any tier: a slice that crosses three or more services, or a concurrency, cache or ordering bug.
+- **A merge conflict that needs judgement** goes to the strongest model.
+- **A planner model, once a feature:** the feature plan with its contract slice and its owned slices, or a root cause that two tries did not explain.
+
+**Set the effort on each dispatch.** Medium for routine coding. High for a strong-model review, a HIGH slice and the planner.
+
+Use the smallest model for a pure lookup with no judgement (find a file, list callers, count rows), and to sort a red CI run (a flake or a real failure). Never use it to build, verify or review.
 
 Set the default in your harness settings and let each agent file name its own model. Keep one test that checks the routing, so a new agent file cannot drift.
 
@@ -179,7 +188,7 @@ The loop is the one in [`ORCHESTRATION.md`](ORCHESTRATION.md) with these changes
 | **Build** | The implementer builds, starts `dev_up.sh`, checks each criterion in the running app, and leaves the stack up |
 | **Verify** | A different agent runs `dev_up.sh --check`, checks each criterion again, and quotes the evidence |
 | **Review** | By tier. LOW and build-mode STANDARD skip it |
-| **Land** | Open the PR, run `premerge.sh`, merge, smoke-test on staging |
+| **Land** | Open the PR, wait for the forge CI, run `premerge.sh`, merge. The next release slot ships it |
 
 ### The verifier is never the implementer
 
@@ -246,51 +255,52 @@ A merge queue solves the same problem and costs a CI run per merge. The source p
 
 ---
 
-## 8. Staging and the release train
+## 8. Release slots — and staging, if you keep one
 
-**Rule: a merge reaches staging within about 15 minutes. Production moves once a day, to the tip of `main`, if its tests pass.** A merge is not a production deploy.
+**Rule: a merge is not a release. Production moves on a clock, to the newest commit of `main` that passed the full suite.** A dark slice merges on green. The owner approves the flag flip.
+
+**[Repo] Update, November 2026.** The source product first ran staging and one release a day. It then made three changes. Each change is the default of this kit now:
+
+| Was | Is | Why |
+|---|---|---|
+| Every merge went to a staging server | **Staging retired.** The local stack (§2), a migration rehearsal on a reduced copy of production, and release checks by evidence (§9) do its job | The staging server cost a box and a deploy path to keep alive. It caught little that the local run had not |
+| One release a day | **Three release slots a day** | Fixes waited up to a day. Three slots cut the wait to hours and kept the restarts batched |
+| The owner previewed every slice before its merge | **The preview gates the flag, not the merge** | A slice behind a flag that is off cannot reach a customer. A new screen with no flag still waits for the preview |
+
+### The release slots
 
 ```
- PR ──merge──► main ──every merge──► staging   (smoke test, real OAuth, deploy path)
-                 │
-                 └──once a day, if main is green──► production
+ PR ──green + premerge──► main ──full suite on main──► green/main
+                                                          │
+                       slot 1, slot 2, slot 3 each day ───┴──► production
 ```
 
-### What staging is
-
-| Property | Value |
-|---|---|
-| **Data** | A reduced, anonymised copy of production. The source product's holds four organisations |
-| **Outbound** | Every outbound switch off. Staging sends no mail and calls no CRM |
-| **Writes** | Write nothing there that must last |
-| **Sign-in** | The same identity providers as production |
-| **Database, secrets** | Never shared with production |
-
-### What staging is for
-
-The PC cannot test four things. Staging tests them in full:
-
-1. The **deploy path**: units, proxy, env files.
-2. A **real OAuth sign-in** or connect.
-3. A **real provider webhook** or sync.
-4. A **migration on production-shaped data**.
-
-For everything else, staging is a smoke check. Wait until the version endpoint serves your merge SHA. Sign in. Load the page of the change. Check one acceptance criterion. Report: "verified locally, staging smoke at `<sha>`, reaches production at the next daily release." If staging does not answer, write "staging not up" and do not claim the test.
-
-### The release train
-
-- **Production moves on a clock.** The source product releases daily at 21:30 UTC. The release takes the newest commit that passed.
-- **A red `main` blocks that night's release.** Watch the post-merge test job. Fix forward or revert at once.
-- **A hold switch stops one night's release.** The source product uses a repository variable, `RELEASE_HOLD=1`. Set it when staging shows a defect you cannot fix in time.
-- **A manual hotfix dispatch happens only when the owner asks in this session, or production is down.** A dark feature never needs one. The agent that dispatches must then watch the run and report the SHA the version endpoint serves.
+- **Each slot ships the newest green commit.** A red tip of `main` holds no release. It does not hold the merges.
+- **A slot ships once.** A second run in the same window does not publish again. **[Repo]** A dispatched run and the scheduled run both started for one slot. The dispatched one skipped its deploy, and the scheduled one published. Verify the run that published (FLEET.md §6.2).
+- **One machine runs the timer.** The forge's own cron is the backup. Two timers release twice.
+- **Freeze merges before each slot,** until the release run starts. Then the slot picks a `main` that has had its full run.
+- **A hold switch stops one slot.** The source product uses a repository variable, `RELEASE_HOLD=1`.
+- **A manual dispatch happens only for a hotfix that the owner asks for, or when production is down.** The agent that dispatches watches the run and reports the SHA the host serves.
 
 ### Ship dark
 
-New behaviour lands behind a flag, default off. The flip is a deliberate act. A flag that moves money or reaches a real person stays with the owner.
+New behaviour lands behind a flag, default off. The flip is a deliberate act, after the owner sees the captures. A flag that moves money or reaches a real person stays with the owner.
 
-### Why a daily train
+### What the PC cannot test, without staging
 
-**[Repo]** The source product took 480 merges in 15 days. Each was a production restart that could end live agent runs. Batching the restarts to one a day gave customers stability and cost the team nothing, because most merges shipped dark. The train is also the human checkpoint of the whole system. See [`PLAYBOOK.md`](PLAYBOOK.md) Principle 15.
+| Risk | Where it is tested now |
+|---|---|
+| The deploy path | The release itself, verified by evidence (§9). Keep the deploy script small and its checks loud |
+| A migration on production-shaped data | A rehearsal on a reduced, anonymised copy of production, before the merge |
+| A real OAuth sign-in or webhook | On production, behind the flag, by the owner, before the flip |
+
+### Keep staging when
+
+You have no flags, your deploy path changes often, or a real sign-in or webhook is the core of most slices. Then keep the earlier shape: every merge goes to staging, a reduced copy with all outbound off, and staging is a smoke check, not a second test suite.
+
+### Why a clock at all
+
+**[Repo]** The source product took 480 merges in 15 days. Each one was a production restart that could end live agent runs. Batching the restarts gave customers stability and cost the team nothing, because most merges shipped dark. The clock is also the human checkpoint of the whole system. See [`PLAYBOOK.md`](PLAYBOOK.md) Principle 15.
 
 ---
 
@@ -467,7 +477,7 @@ Do not install everything on day one. This order works.
 5. **Risk tiers and model routing.** Write the tier table into your loop command.
 6. **`fences.json` and two-speed delivery.** Sort your fences. Let process fences warn in build.
 7. **`premerge.sh`.** Run it before every merge. Add your collision fences.
-8. **Staging, then the release train.** Make staging a reduced copy with outbound off. Release on a clock. Add a hold switch.
+8. **Release slots.** Release on a clock, to the newest green commit. Add a hold switch. Keep staging only for the cases of §8.
 9. **Task board and handoff queue.** Connect the board. Use `/work-on-task`.
 10. **Owner grants.** Only now open a dated window. Write the file yourself, by hand.
 
