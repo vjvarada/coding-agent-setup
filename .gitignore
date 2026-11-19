@@ -11,3 +11,5 @@ Thumbs.db
 # Skill runtime cruft (must never be published)
 .impeccable/
 .claude/
+
+__pycache__/
