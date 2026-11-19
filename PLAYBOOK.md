@@ -392,22 +392,94 @@ real bugs. Each cost about 30 minutes. See [`DELIVERY.md`](DELIVERY.md) §3 to �
 
 ---
 
-## Principle 15 — Staging is a smoke test, and the release train is the human checkpoint (attacks: *merge equals production*)
+## Principle 15 — A merge is not a release, and the release clock is the human checkpoint (attacks: *merge equals production*)
 
 If every merge reaches customers, a confident wrong change reaches them in
-minutes. Separate **deploy** from **release**. Every merge goes to staging, a
-reduced anonymised copy of production with all outbound switches off. Production
-moves on a clock, once a day, to the tip of a green `main`. A hold switch stops
-one night's release.
+minutes. Separate **merge** from **release**. Production moves on a clock, to
+the newest commit of `main` that passed the full suite. A red tip holds the
+release, not the merges. A hold switch stops one slot.
 
-Staging is not a second test suite. The local run covers behaviour. Staging
-covers what the PC cannot: the deploy path, real OAuth, real webhooks, and a
-migration on production-shaped data. Verify every deploy by evidence (the served
-SHA, the migration ledger, the log line), never by a green job.
+New behaviour ships dark, behind a flag that is off. The owner looks at the
+captures and approves the flip. So a slice can merge on green, and the human
+checkpoint moves to the flag.
 
-This is the same idea as Principle 10, moved later: a dated owner grant lets
-agents merge and deploy inside a window, and the daily train still gives the
-owner a checkpoint. See [`DELIVERY.md`](DELIVERY.md) §8, §9 and §11.
+*Lesson:* the source product started with staging and one release a day. It
+then retired staging and moved to three release slots a day. The local run, a
+migration rehearsal on a reduced copy of production, and release checks by
+evidence covered what staging had covered. Fixes now wait hours, not a day.
+Verify every release by evidence (the run that published, the served SHA, the
+backup before a migration, the smoke jobs), never by a green job. See
+[`DELIVERY.md`](DELIVERY.md) §8 and §9 and [`FLEET.md`](FLEET.md) §6.
+
+---
+
+## Principle 16 — Integration is the limit, so more agents make a queue (attacks: *lane sprawl*)
+
+Agents write code faster than anyone can review, preview and merge it. Past
+that point, a new lane adds open PRs, conflicts and stale reviews, not
+delivery. Cap the work in flight: three or four branches for each person who
+integrates, and at most four open PRs per lane. Give merging to one lane that
+does nothing else. Rest a lane at its cap.
+
+*Lesson:* one merge lane merged about 18 PRs in the 9 hours between two
+releases. Lanes that built past their cap only lengthened its queue. See
+[`FLEET.md`](FLEET.md) §3 and §5.
+
+---
+
+## Principle 17 — A message is not an action (attacks: *silent orchestration failures*)
+
+An orchestrator that sends an order has proven one thing: that the transport
+took it. Check three facts separately. The text **landed** in the receiver's
+transcript. The receiver **read** it. The receiver **acted**, and the board or
+the queue file shows the act. A watch loop that trusts a self-reported state
+("waiting") misses a session that hangs.
+
+*Lesson:* a lane stuck in one model request for 2.7 hours never read a
+wind-down order. The send reported success, and the watch counted "waiting" as
+healthy. The first wake script typed its text and left it unsubmitted. See
+[`FLEET.md`](FLEET.md) §4.2 and §4.3.
+
+---
+
+## Principle 18 — Check who you are before you write (attacks: *acting as the wrong identity*)
+
+A sign-in can succeed as the wrong account. A browser often holds another
+account, and a headless machine signs in through that browser. Before any
+write after a new sign-in, call `whoami` (or its equivalent) and compare the
+member and the organisation with what you expect. On a mismatch, freeze all
+writes, sign out, and scan for writes since the sign-in.
+
+*Lesson:* a box connected to the task board as a member of another
+organisation. One lane checked `whoami`, saw a strange organisation, and wrote
+nothing. A scan found no write. See [`FLEET.md`](FLEET.md) §8.
+
+---
+
+## Principle 19 — Name the fence, or call the rule advisory (attacks: *rules that only look enforced*)
+
+A rule that nothing tests is a wish. For each rule you add, name the test,
+hook or branch protection that fails when someone breaks it. If nothing fails,
+write "advisory" beside it. Agents then know which rules they can trust the
+machine to catch, and people know which rules depend on care.
+
+*Lesson:* a contributor playbook said "ask the owner before you change shared
+code". The repo had no code-owners file, and branch protection required no
+review. The rule ships, labelled advisory, beside a note on the fence that
+would make it real.
+
+---
+
+## Principle 20 — Plan by the gratification ladder (attacks: *plans that never reach a user*)
+
+Write a plan as rungs. Each rung ends in a demo that the owner sees and uses
+on production. Rung 0 goes before every rung: a leak, data loss or a broken
+live feature. After that, take the lowest open rung, then the slice with the
+least slack to its demo. A slice that serves no rung waits.
+
+*Lesson:* the owner reported a broken 14 MB upload in the evening. It was a
+rung 0 item, so it went ahead of all feature work. It merged the next morning
+and went live in that day's second release.
 
 ---
 
@@ -426,8 +498,8 @@ owner a checkpoint. See [`DELIVERY.md`](DELIVERY.md) §8, §9 and §11.
    Run it on the local stack first (Principle 12), then spend review by tier
    (Principle 14).
 7. **Merge** *(delivery)* — run the premerge check against today's `main`
-   (Principle 13), merge, smoke-test on staging, and confirm the served SHA
-   (Principle 15). Production follows on the release train.
+   (Principle 13), and merge. The next release slot ships it. Confirm the
+   served SHA by evidence (Principle 15).
 8. **Record** — if you learned something that makes the next change faster, push
    it back to this kit (see `CONTRIBUTING.md`). Update the owning `AGENTS.md` if the
    change moved a boundary (DOX "Update After Editing"). If the work came off a
@@ -439,13 +511,13 @@ change — a queue of features, planned and dispatched over days — that loop b
 the inner half of a larger one: plan → wireframe → spec → audit, then dispatch →
 build → verify → review → PR, with the plan itself living in the repo. See
 [`ORCHESTRATION.md`](ORCHESTRATION.md). The path from a built slice to production
-is in [`DELIVERY.md`](DELIVERY.md).
+is in [`DELIVERY.md`](DELIVERY.md). Running many agents, machines and people at once is in [`FLEET.md`](FLEET.md).
 
 ---
 
 ## Going further
 
-These fifteen principles are the core. For the harder practices that keep a codebase
+These twenty principles are the core. For the harder practices that keep a codebase
 safe and cheap for agents *over time* — tool risk annotations, fail-closed
 permissions, golden trajectory evals, prompt-cache discipline, auto-compaction
 thresholds, tool naming, and complexity/correctness CI gates — see

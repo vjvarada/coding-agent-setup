@@ -8,6 +8,10 @@ and without the plan quietly dissolving along the way.
 It is the methodology behind Principles 8–10 and the templates in
 `templates/claude/agents/`, `commands/`, and `templates/shared/`.
 
+This loop runs inside one session. To run about ten such sessions at once, on
+several machines, with one merger and, later, a second person with his own
+agents, see [`FLEET.md`](FLEET.md).
+
 > **The honest headline:** the autonomy does not come from the agents. It comes
 > from the plan being machine-checkable and the gates being code. Strong agents
 > against a vague plan produce confident, unreviewable work. Ordinary agents

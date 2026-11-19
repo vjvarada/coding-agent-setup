@@ -41,6 +41,9 @@ proven on a real change.
      `templates/claude/agents/`). Changing a role's prompt is changing an
      interface: state what its report must still contain, because the supervisor
      and the downstream agents parse it.
+   - Something about running many sessions, machines or people (lanes, the
+     merge lane, releases, sign-ins, a second person's fleet) → `FLEET.md`,
+     and the matching file in `templates/fleet/`.
    - A new owner gate → `templates/claude/plan-guard.config.json` **and** a case
      in `plan-guard.test.mjs`. An untested gate is a guess; ship both or neither.
 3. **Keep the installers idempotent and non-destructive.** They must merge into
